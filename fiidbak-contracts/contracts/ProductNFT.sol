@@ -7,7 +7,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ERC1155Burnable} from "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Burnable.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-contract MyToken is ERC1155, Ownable, AccessControl {
+contract ProductNFT is ERC1155, Ownable, AccessControl {
     uint256 private _nextTokenId = 1;
     bytes32 public constant VERIFIER_ROLE = keccak256("VERIFIER_ROLE");
     bytes32 public constant CREATOR_ROLE = keccak256("CREATOR_ROLE");
@@ -61,10 +61,10 @@ contract MyToken is ERC1155, Ownable, AccessControl {
         });
         
         productsById[tokenId] = newProduct;
-        // productIdsByOwner[product_owner].push(tokenId);
-        _tokenURIs[tokenId] = string(abi.encodePacked("ipfs://", ipfs_cid));
         
         _mint(product_owner, tokenId, amount, "");
+        // productIdsByOwner[product_owner].push(tokenId);
+        _tokenURIs[tokenId] = string(abi.encodePacked("https://ipfs.io/ipfs/", ipfs_cid));
         _grantRole(CREATOR_ROLE, product_owner);
 
         emit ProductMinted(product_owner, tokenId, amount);

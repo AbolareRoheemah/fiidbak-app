@@ -1,5 +1,5 @@
 {
-  "name": "BadgeNFT",
+  "name": "ProductNFT",
   "version": "1.0.0",
   "type": "module",
   "devDependencies": {
@@ -10,5 +10,9 @@
     "hardhat": "^3.0.0",
     "typescript": "~5.8.0",
     "viem": "^2.34.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.4.0",
+    "@openzeppelin/contracts-upgradeable": "^5.4.0"
   }
 }
