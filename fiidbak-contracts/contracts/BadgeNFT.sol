@@ -7,10 +7,11 @@ import {ERC1155Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC1
 import {ERC1155BurnableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC1155/extensions/ERC1155BurnableUpgradeable.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-contract MyToken is Initializable, ERC1155Upgradeable, AccessControlUpgradeable, ERC1155BurnableUpgradeable {
+contract BadgeNFT is Initializable, ERC1155Upgradeable, AccessControlUpgradeable, ERC1155BurnableUpgradeable {
     bytes32 public constant URI_SETTER_ROLE = keccak256("URI_SETTER_ROLE");
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant VOTER_ROLE = keccak256("VOTER_ROLE");
+
     uint256 public constant SEEDLING = 1;
     uint256 public constant WOODEN = 2;
     uint256 public constant BRONZE = 3;
@@ -30,10 +31,14 @@ contract MyToken is Initializable, ERC1155Upgradeable, AccessControlUpgradeable,
     }
 
     mapping(uint256 => string) private _tokenURIs;
-    mapping (address => uint) userTier;
+    mapping(address => uint256) public userHighestTier;
 
-    function initialize(address defaultAdmin, address minter) public initializer {
-        __ERC1155_init("");
+    event BadgeMinted(address indexed user, uint256 indexed tierId, string ipfsCid);
+    event BadgeDeleted(address indexed user, uint256 indexed tierId);
+    event URISet(string newUri);
+
+    function initialize(address defaultAdmin, address minter, string memory baseUri) public initializer {
+        __ERC1155_init(baseUri);
         __AccessControl_init();
         __ERC1155Burnable_init();
 
@@ -43,6 +48,8 @@ contract MyToken is Initializable, ERC1155Upgradeable, AccessControlUpgradeable,
 
     function setURI(string memory newuri) public onlyRole(URI_SETTER_ROLE) {
         _setURI(newuri);
+
+        emit URISet(newuri);
     }
 
     function uri(uint256 tier_id) public view override returns (string memory) {
@@ -53,7 +60,7 @@ contract MyToken is Initializable, ERC1155Upgradeable, AccessControlUpgradeable,
         return super.uri(tier_id);
     }
 
-    function mintBadge(address user, uint256 tier_id, bytes memory ipfs_cid)
+    function mintBadge(address user, uint256 tier_id, string memory ipfs_cid)
         public
         onlyRole(MINTER_ROLE)
     {
@@ -61,13 +68,16 @@ contract MyToken is Initializable, ERC1155Upgradeable, AccessControlUpgradeable,
         require(tier_id != 0, "invalid token id");
         require(balanceOf(user, tier_id) == 0, "user already owns this badge");
 
-        _mint(user, tier_id, 1, ipfs_cid);
+        _mint(user, tier_id, 1, bytes(ipfs_cid));
         _tokenURIs[tier_id] = string(abi.encodePacked("https://ipfs.io/ipfs/", ipfs_cid));
-        userTier[user] = tier_id;
-
-        if (tier_id == 2) {
-            _grantRole(VOTER_ROLE, user);
+        if (tier_id > userHighestTier[user]) {
+            userHighestTier[user] = tier_id;
+            if (tier_id >= 2 && !hasRole(VOTER_ROLE, user)) {
+                _grantRole(VOTER_ROLE, user);
+            }
         }
+
+        emit BadgeMinted(user, tier_id, ipfs_cid);
     }
 
     function mintBatch(address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data)
@@ -77,8 +87,46 @@ contract MyToken is Initializable, ERC1155Upgradeable, AccessControlUpgradeable,
         _mintBatch(to, ids, amounts, data);
     }
 
+    function deleteBadge(address user, uint256 tier_id) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(user != address(0), "invalid user address");
+        require(tier_id > 0, "invalid badge ID");
+        require(balanceOf(user, tier_id) > 0, "user doesnt own this badge");
+
+        _burn(user, tier_id, 1);
+
+        if (tier_id == userHighestTier[user]) {
+            userHighestTier[user] = tier_id - 1;
+            if (userHighestTier[user] < 2) {
+                _revokeRole(VOTER_ROLE, user);
+            }
+        }
+        delete _tokenURIs[tier_id];
+
+        emit BadgeDeleted(user, tier_id);
+    }
+
     function getUserTier(address user) public view returns (uint) {
-        return userTier[user];
+        return userHighestTier[user];
+    }
+
+   function getUserBadges(address user) public view returns (uint256[] memory) {
+        uint256 badgeCount = 0;
+        uint256 highestTier = userHighestTier[user];
+        for (uint256 i = 1; i <= highestTier; i++) {
+            if (balanceOf(user, i) > 0) {
+                badgeCount++;
+            }
+        }
+
+        uint256[] memory badges = new uint256[](badgeCount);
+        uint256 index = 0;
+        for (uint256 i = 1; i <= highestTier; i++) {
+            if (balanceOf(user, i) > 0) {
+                badges[index] = i;
+                index++;
+            }
+        }
+        return badges;
     }
 
     // The following functions are overrides required by Solidity.
