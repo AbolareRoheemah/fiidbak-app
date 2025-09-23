@@ -18,20 +18,18 @@ contract BadgeNFT is Initializable, ERC1155Upgradeable, AccessControlUpgradeable
     uint256 public constant SILVER = 4;
     uint256 public constant GOLD = 5;
 
-    // struct User {
-    //     address user_address;
-    //     uint8 user_tier;
-    //     uint256 reviews_given;
-    //     uint256 approved_reviews;
-    // }
-
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }
 
-    mapping(uint256 => string) private _tokenURIs;
+    // Mapping from user => badgeId => ipfsCid
+    mapping(address => mapping(uint256 => string)) private _userBadgeCIDs;
+    // Mapping from user => highest tier
     mapping(address => uint256) public userHighestTier;
+
+    // Storage gap for upgradeability
+    uint256[45] private __gap;
 
     event BadgeMinted(address indexed user, uint256 indexed tierId, string ipfsCid);
     event BadgeDeleted(address indexed user, uint256 indexed tierId);
@@ -48,16 +46,36 @@ contract BadgeNFT is Initializable, ERC1155Upgradeable, AccessControlUpgradeable
 
     function setURI(string memory newuri) public onlyRole(URI_SETTER_ROLE) {
         _setURI(newuri);
-
         emit URISet(newuri);
     }
 
+    function grantMinter(address minter) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        _grantRole(MINTER_ROLE, minter);
+    }
+
+    function revokeMinter(address minter) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        _revokeRole(MINTER_ROLE, minter);
+    }
+
+    function grantURISetter(address setter) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        _grantRole(URI_SETTER_ROLE, setter);
+    }
+
+    function revokeURISetter(address setter) public onlyRole(DEFAULT_ADMIN_ROLE) {
+        _revokeRole(URI_SETTER_ROLE, setter);
+    }
+
     function uri(uint256 tier_id) public view override returns (string memory) {
-        string memory tokenURI = _tokenURIs[tier_id];
-        if (bytes(tokenURI).length > 0) {
-            return tokenURI;
-        }
+        // This returns the default URI for the badge type, not user-specific
         return super.uri(tier_id);
+    }
+
+    function userBadgeURI(address user, uint256 tier_id) public view returns (string memory) {
+        string memory cid = _userBadgeCIDs[user][tier_id];
+        if (bytes(cid).length > 0) {
+            return string(abi.encodePacked("https://ipfs.io/ipfs/", cid));
+        }
+        return "";
     }
 
     function mintBadge(address user, uint256 tier_id, string memory ipfs_cid)
@@ -69,7 +87,8 @@ contract BadgeNFT is Initializable, ERC1155Upgradeable, AccessControlUpgradeable
         require(balanceOf(user, tier_id) == 0, "user already owns this badge");
 
         _mint(user, tier_id, 1, bytes(ipfs_cid));
-        _tokenURIs[tier_id] = string(abi.encodePacked("https://ipfs.io/ipfs/", ipfs_cid));
+        _userBadgeCIDs[user][tier_id] = ipfs_cid;
+
         if (tier_id > userHighestTier[user]) {
             userHighestTier[user] = tier_id;
             if (tier_id >= 2 && !hasRole(VOTER_ROLE, user)) {
@@ -84,6 +103,7 @@ contract BadgeNFT is Initializable, ERC1155Upgradeable, AccessControlUpgradeable
         public
         onlyRole(MINTER_ROLE)
     {
+        // Not supporting per-badge CID in batch mint
         _mintBatch(to, ids, amounts, data);
     }
 
@@ -95,12 +115,21 @@ contract BadgeNFT is Initializable, ERC1155Upgradeable, AccessControlUpgradeable
         _burn(user, tier_id, 1);
 
         if (tier_id == userHighestTier[user]) {
-            userHighestTier[user] = tier_id - 1;
-            if (userHighestTier[user] < 2) {
+            // Find next highest badge the user owns
+            uint256 newHighest = 0;
+            for (uint256 i = tier_id - 1; i >= 1; i--) {
+                if (balanceOf(user, i) > 0) {
+                    newHighest = i;
+                    break;
+                }
+                if (i == 1) break; // Prevent underflow
+            }
+            userHighestTier[user] = newHighest;
+            if (newHighest < 2 && hasRole(VOTER_ROLE, user)) {
                 _revokeRole(VOTER_ROLE, user);
             }
         }
-        delete _tokenURIs[tier_id];
+        delete _userBadgeCIDs[user][tier_id];
 
         emit BadgeDeleted(user, tier_id);
     }
@@ -109,10 +138,10 @@ contract BadgeNFT is Initializable, ERC1155Upgradeable, AccessControlUpgradeable
         return userHighestTier[user];
     }
 
-   function getUserBadges(address user) public view returns (uint256[] memory) {
+    function getUserBadges(address user) public view returns (uint256[] memory) {
+        // Find all badge IDs the user owns (from 1 to GOLD)
         uint256 badgeCount = 0;
-        uint256 highestTier = userHighestTier[user];
-        for (uint256 i = 1; i <= highestTier; i++) {
+        for (uint256 i = 1; i <= GOLD; i++) {
             if (balanceOf(user, i) > 0) {
                 badgeCount++;
             }
@@ -120,7 +149,7 @@ contract BadgeNFT is Initializable, ERC1155Upgradeable, AccessControlUpgradeable
 
         uint256[] memory badges = new uint256[](badgeCount);
         uint256 index = 0;
-        for (uint256 i = 1; i <= highestTier; i++) {
+        for (uint256 i = 1; i <= GOLD; i++) {
             if (balanceOf(user, i) > 0) {
                 badges[index] = i;
                 index++;
@@ -140,13 +169,11 @@ contract BadgeNFT is Initializable, ERC1155Upgradeable, AccessControlUpgradeable
     }
 
     // Disable transfers (soulbound)
-    function safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes memory data) public override {
-        require(from == address(0), "Badges are soulbound");
-        super.safeTransferFrom(from, to, id, amount, data);
+    function safeTransferFrom(address, address, uint256, uint256, bytes memory) public pure override {
+        revert("Badges are soulbound");
     }
 
-    function safeBatchTransferFrom(address from, address to, uint256[] memory ids, uint256[] memory amounts, bytes memory data) public override {
-        require(from == address(0), "Badges are soulbound");
-        super.safeBatchTransferFrom(from, to, ids, amounts, data);
+    function safeBatchTransferFrom(address, address, uint256[] memory, uint256[] memory, bytes memory) public pure override {
+        revert("Badges are soulbound");
     }
 }

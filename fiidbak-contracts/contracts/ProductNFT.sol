@@ -7,7 +7,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ERC1155Burnable} from "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Burnable.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-contract ProductNFT is ERC1155, Ownable, AccessControl {
+contract ProductNFT is ERC1155, Ownable, AccessControl, ERC1155Burnable {
     uint256 private _nextTokenId = 1;
     bytes32 public constant VERIFIER_ROLE = keccak256("VERIFIER_ROLE");
     bytes32 public constant CREATOR_ROLE = keccak256("CREATOR_ROLE");
@@ -52,7 +52,7 @@ contract ProductNFT is ERC1155, Ownable, AccessControl {
         require(amount > 0, "Amount must be positive");
 
         uint256 tokenId = _nextTokenId++;
-        require(balanceOf(product_owner, tokenId) == 0, "user already owns this product");
+        // require(balanceOf(product_owner, tokenId) == 0, "user already owns this product");
         
         Product memory newProduct = Product({
             product_id: tokenId,
@@ -84,12 +84,12 @@ contract ProductNFT is ERC1155, Ownable, AccessControl {
     function deleteProductAdmin(address product_owner, uint256 product_id) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(product_owner != address(0), "Invalid address");
         require(balanceOf(product_owner, product_id) > 0, "Owner doesn't own the product");
-        uint256 amt = balanceOf(msg.sender, product_id);
+        uint256 amt = balanceOf(product_owner, product_id);
         _burn(product_owner, product_id, amt);
         delete productsById[product_id];
         delete _tokenURIs[product_id];
 
-        emit ProductDeleted(product_owner, product_id, 1);
+        emit ProductDeleted(product_owner, product_id, amt);
     }
 
     function addVerifier(address verifier) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -117,7 +117,7 @@ contract ProductNFT is ERC1155, Ownable, AccessControl {
         for (uint i = 0; i < returnCount; i++) {
             uint256 productId = start_index + i;
             if (productsById[productId].product_id != 0) {
-                products[i] = productsById[i];
+                products[i] = productsById[productId];
             }
         }
 
