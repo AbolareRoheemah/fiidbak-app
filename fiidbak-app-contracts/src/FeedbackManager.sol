@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
-contract FeedbackManager is Initializable, AccessControlUpgradeable {
+contract FeedbackManager is AccessControl {
     uint8 public constant WOOD_VOTE_WEIGHT = 1;
     uint8 public constant BRONZE_VOTE_WEIGHT = 2;
     uint8 public constant SILVER_VOTE_WEIGHT = 3;
@@ -46,17 +45,12 @@ contract FeedbackManager is Initializable, AccessControlUpgradeable {
     mapping(uint256 => mapping(address => bool)) public hasVoted;
     mapping(uint256 => uint256[]) public productFeedbacks;
     mapping(address => uint256) public userApprovedFeedbackCount; // Tracks approved feedback for badge upgrades
-    uint256[40] private __gap;
 
-    constructor() {
-        _disableInitializers();
-    }
-
-    function initialize(address defaultAdmin, address _badgeContract) public initializer {
-        __AccessControl_init();
+    constructor(address defaultAdmin, address _badgeContract) {
+        require(defaultAdmin != address(0), "Invalid admin address");
+        require(_badgeContract != address(0), "Invalid badge contract address");
         _grantRole(DEFAULT_ADMIN_ROLE, defaultAdmin);
         _grantRole(APPROVER_ROLE, defaultAdmin);
-        require(_badgeContract != address(0), "Invalid badge contract address");
         badgeContract = _badgeContract;
         emit BadgeContractSet(_badgeContract);
     }
