@@ -8,7 +8,6 @@ interface Product {
   imageUrl: string
   owner: string
   feedbackCount: number
-  createdAt: string
 }
 
 interface ProductCardProps {
@@ -55,11 +54,6 @@ export function ProductCard({ product }: ProductCardProps) {
               <User size={14} />
               <span>{formatAddress(product.owner)}</span>
             </div>
-          </div>
-
-          {/* Created Date */}
-          <div className="text-xs text-gray-400">
-            Created {new Date(product.createdAt).toLocaleDateString()}
           </div>
         </div>
       </div>

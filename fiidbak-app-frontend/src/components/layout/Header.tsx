@@ -31,8 +31,20 @@ export function Header() {
     }
   }, [chain, isConnected])
 
+  // Prevent scrolling when mobile menu is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden"
+    } else {
+      document.body.style.overflow = ""
+    }
+    return () => {
+      document.body.style.overflow = ""
+    }
+  }, [isOpen])
+
   return (
-    <nav className="sticky top-0 z-50 glass-card border-b bg-black">
+    <nav className="sticky top-0 z-50 glass-card border-b bg-black w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Network warning */}
         {showNetworkWarning && (
@@ -43,17 +55,17 @@ export function Header() {
             </span>
           </div>
         )}
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between h-16 w-full">
           {/* Logo */}
-          <Link href="/" className="flex items-center space-x-2 mb-4">
-              <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">F</span>
-              </div>
-              <span className="text-xl font-bold">Fiidbak</span>
-            </Link>
+          <Link href="/" className="flex items-center space-x-2 mb-0 sm:mb-0">
+            <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-lg">F</span>
+            </div>
+            <span className="text-xl font-bold">Fiidbak</span>
+          </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-8">
+          <div className="hidden md:flex items-center space-x-8 flex-1 justify-center">
             {navigation.map((item) => {
               const Icon = item.icon
               const isActive = pathname === item.href
@@ -84,51 +96,82 @@ export function Header() {
           </div>
 
           {/* Mobile menu button */}
-          <div className="md:hidden">
+          <div className="md:hidden flex items-center">
             <button
               type="button"
               className="p-2 rounded-md hover:bg-secondary transition-colors"
               onClick={() => setIsOpen(!isOpen)}
               aria-label="Toggle menu"
             >
-              {isOpen ? <X size={20} /> : <Menu size={20} />}
+              {isOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
           </div>
         </div>
+      </div>
 
-        {/* Mobile Navigation */}
-        {isOpen && (
-          <div className="md:hidden py-4 border-t border-border">
-            <div className="space-y-2">
-              {navigation.map((item) => {
-                const Icon = item.icon
-                const isActive = pathname === item.href
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={`flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                      isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-                    }`}
-                    onClick={() => setIsOpen(false)}
-                  >
-                    <Icon size={16} />
-                    <span>{item.name}</span>
-                  </Link>
-                )
-              })}
-              <div className="pt-4 border-t border-border">
-                <ConnectButton
-                  showBalance={false}
-                  chainStatus="icon"
-                  accountStatus="address"
-                />
+      {/* Mobile Navigation Overlay */}
+      <div
+        className={`fixed inset-0 z-50 bg-black bg-opacity-70 transition-opacity duration-300 ${
+          isOpen ? "block md:hidden" : "hidden"
+        }`}
+        style={{ backdropFilter: "blur(2px)" }}
+        onClick={() => setIsOpen(false)}
+        aria-hidden={!isOpen}
+      />
+
+      {/* Mobile Navigation Drawer */}
+      <div
+        className={`fixed top-0 right-0 h-full w-4/5 max-w-xs bg-background border-l border-border z-[60] transform transition-transform duration-300 ease-in-out
+        ${isOpen ? "translate-x-0" : "translate-x-full"} md:hidden`}
+        style={{ boxShadow: isOpen ? "0 0 24px 0 rgba(0,0,0,0.2)" : undefined }}
+        aria-hidden={!isOpen}
+      >
+        <div className="flex flex-col h-full">
+          <div className="flex items-center justify-between px-4 py-4 border-b border-border">
+            <Link href="/" className="flex items-center space-x-2" onClick={() => setIsOpen(false)}>
+              <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-lg">F</span>
               </div>
-            </div>
+              <span className="text-xl font-bold">Fiidbak</span>
+            </Link>
+            <button
+              type="button"
+              className="p-2 rounded-md hover:bg-secondary transition-colors"
+              onClick={() => setIsOpen(false)}
+              aria-label="Close menu"
+            >
+              <X size={24} />
+            </button>
           </div>
-        )}
+          <nav className="flex-1 overflow-y-auto px-4 py-6 space-y-2">
+            {navigation.map((item) => {
+              const Icon = item.icon
+              const isActive = pathname === item.href
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={`flex items-center space-x-3 px-3 py-2 rounded-lg text-base font-medium transition-all duration-200 ${
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  }`}
+                  onClick={() => setIsOpen(false)}
+                >
+                  <Icon size={18} />
+                  <span>{item.name}</span>
+                </Link>
+              )
+            })}
+          </nav>
+          <div className="px-4 pb-6 border-t border-border">
+            <ConnectButton
+              showBalance={false}
+              chainStatus="icon"
+              accountStatus="address"
+            />
+          </div>
+        </div>
       </div>
     </nav>
   )

@@ -4,6 +4,9 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Upload, X } from 'lucide-react'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import toast from 'react-hot-toast'
+import { uploadFileToPinata, uploadJsonToPinata } from '@/utils/pinata'
+import { useCreateProduct } from '@/hooks/useContract'
+import { useAccount } from 'wagmi'
 
 export default function CreateProductPage() {
   const router = useRouter()
@@ -18,6 +21,9 @@ export default function CreateProductPage() {
   })
   const [tagInput, setTagInput] = useState('')
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+
+  const { address } = useAccount()
+  const { createProduct, isCreateLoading } = useCreateProduct()
 
   const categories = [
     'DeFi',
@@ -74,17 +80,35 @@ export default function CreateProductPage() {
       toast.error('Please fill in all required fields')
       return
     }
+    if (!address) {
+      toast.error('Please connect your wallet')
+      return
+    }
 
     setIsLoading(true)
     
     try {
-      // TODO: Implement product creation with smart contract
-      console.log('Creating product:', formData)
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      toast.success('Product created successfully!')
+      // 1. Upload product data to IPFS via Pinata
+      const ipfsPayload: Record<string, any> = {
+        name: formData.name,
+        description: formData.description,
+        category: formData.category,
+        website: formData.website,
+        tags: formData.tags,
+        image: formData.image
+      }
+      // If image is present, include it in the upload
+      let ipfsCid: string
+      ipfsCid = await uploadJsonToPinata(ipfsPayload)
+      // if (formData.image) {
+      //   ipfsCid = await uploadFileToPinata(ipfsPayload, formData.image)
+      // } else {
+      //   ipfsCid = await uploadFileToPinata(ipfsPayload)
+      // }
+
+      // 2. Call the contract to mint the product NFT
+      await createProduct(address as `0x${string}`, 1, ipfsCid)
+      // Success toast will be handled by the hook, but we can optimistically route
       router.push('/products')
     } catch (error) {
       toast.error('Failed to create product. Please try again.')
@@ -294,17 +318,17 @@ export default function CreateProductPage() {
             type="button"
             onClick={() => router.push('/products')}
             className="btn-secondary"
-            disabled={isLoading}
+            disabled={isLoading || isCreateLoading}
           >
             Cancel
           </button>
           <button
             type="submit"
             className="btn-primary flex items-center space-x-2"
-            disabled={isLoading}
+            disabled={isLoading || isCreateLoading}
           >
-            {isLoading && <LoadingSpinner size="sm" />}
-            <span>{isLoading ? 'Creating...' : 'Create Product'}</span>
+            {(isLoading || isCreateLoading) && <LoadingSpinner size="sm" />}
+            <span>{(isLoading || isCreateLoading) ? 'Creating...' : 'Create Product'}</span>
           </button>
         </div>
       </form>

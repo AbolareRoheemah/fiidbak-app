@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/ui/EmptyState"
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner"
 import { getAllProducts } from "@/hooks/useContract"
 import { getUploadedFile } from "@/utils/pinata"
+import { useRouter } from "next/navigation"
 
 type Product = {
   id: number
@@ -14,7 +15,7 @@ type Product = {
   imageUrl: string
   owner: string
   feedbackCount: number
-  createdAt: string
+  // removed createdAt
 }
 
 type ContractProduct = {
@@ -25,11 +26,11 @@ type ContractProduct = {
 
 export default function ProductsPage() {
   const [searchTerm, setSearchTerm] = useState("")
-  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "mostReviews">("newest")
+  const [sortBy, setSortBy] = useState<"mostReviews">("mostReviews")
   const [error, setError] = useState<string | null>(null)
   const [products, setProducts] = useState<Product[]>([])
   const [loadingIpfs, setLoadingIpfs] = useState(false)
-
+  const router = useRouter()
   // Fetch products from contract
   const { data: productsRaw = [], isLoading, isError, error: fetchError } = getAllProducts()
 
@@ -80,9 +81,7 @@ export default function ProductsPage() {
             imageUrl: ipfsData.image ?? ipfsData.imageUrl ?? "https://placehold.co/400x300?text=No+Image",
             owner: p.product_owner ?? "",
             feedbackCount: ipfsData.feedbackCount ? Number(ipfsData.feedbackCount) : 0,
-            createdAt: ipfsData.createdAt
-              ? new Date(ipfsData.createdAt).toISOString().slice(0, 10)
-              : "1970-01-01",
+            // removed createdAt
           } as Product
         })
 
@@ -112,11 +111,8 @@ export default function ProductsPage() {
 
   const sortedProducts = useMemo(() => {
     return [...filteredProducts].sort((a, b) => {
+      // Only sort by mostReviews, since createdAt is removed
       switch (sortBy) {
-        case "newest":
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        case "oldest":
-          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
         case "mostReviews":
           return b.feedbackCount - a.feedbackCount
         default:
@@ -164,7 +160,7 @@ export default function ProductsPage() {
           action={{
             label: "Create Product",
             onClick: () => {
-              // TODO: Implement navigation to create product page
+              router.push("/create-product")
             },
           }}
         />
@@ -203,13 +199,11 @@ export default function ProductsPage() {
               onChange={(e) => setSortBy(e.target.value as any)}
               className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
-              <option value="newest">Newest</option>
-              <option value="oldest">Oldest</option>
               <option value="mostReviews">Most Reviews</option>
             </select>
           </div>
 
-          <button className="btn-primary flex items-center space-x-2">
+          <button className="btn-primary flex items-center space-x-2" onClick={() => router.push("/create-product")}>
             <Plus size={20} />
             <span>Create Product</span>
           </button>
@@ -238,7 +232,7 @@ export default function ProductsPage() {
           action={{
             label: "Create Product",
             onClick: () => {
-              // TODO: Implement navigation to create product page
+              router.push("/create-product")
             },
           }}
         />
