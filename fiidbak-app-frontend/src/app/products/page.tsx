@@ -1,98 +1,173 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Search, Filter, Plus } from "lucide-react"
 import { ProductCard } from "@/components/ui/ProductCard"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner"
+import { getAllProducts } from "@/hooks/useContract"
+import { getUploadedFile } from "@/utils/pinata"
 
-// Mock data - replace with actual data from contracts
-const mockProducts = [
-  {
-    id: 1,
-    name: "Decentralized Social Media Platform",
-    description: "A blockchain-based social media platform with user ownership and data privacy.",
-    imageUrl: "https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=400",
-    owner: "0x1234...5678",
-    feedbackCount: 23,
-    createdAt: "2024-01-15",
-  },
-  {
-    id: 2,
-    name: "NFT Marketplace",
-    description: "Trade and discover unique digital assets in our secure marketplace.",
-    imageUrl: "https://images.unsplash.com/photo-1639322537228-f912d0a4d3d8?w=400",
-    owner: "0x8765...4321",
-    feedbackCount: 45,
-    createdAt: "2024-01-10",
-  },
-  {
-    id: 3,
-    name: "DeFi Yield Farming Protocol",
-    description: "Earn rewards by providing liquidity to our decentralized finance protocol.",
-    imageUrl: "https://images.unsplash.com/photo-1642790103337-344b9c2b4e6e?w=400",
-    owner: "0xabcd...efgh",
-    feedbackCount: 67,
-    createdAt: "2024-01-05",
-  },
-  {
-    id: 4,
-    name: "Web3 Gaming Platform",
-    description: "Play-to-earn gaming with NFT rewards and decentralized ownership.",
-    imageUrl: "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400",
-    owner: "0xefgh...ijkl",
-    feedbackCount: 89,
-    createdAt: "2024-01-01",
-  },
-  {
-    id: 5,
-    name: "Decentralized Exchange",
-    description: "Trade cryptocurrencies with low fees and full custody of your assets.",
-    imageUrl: "https://images.unsplash.com/photo-1621761191319-c6fb62004040?w=400",
-    owner: "0xijkl...mnop",
-    feedbackCount: 156,
-    createdAt: "2023-12-28",
-  },
-  {
-    id: 6,
-    name: "DAO Governance Tool",
-    description: "Manage decentralized organizations with transparent voting and proposals.",
-    imageUrl: "https://images.unsplash.com/photo-1551434678-e076c223a692?w=400",
-    owner: "0xmnop...qrst",
-    feedbackCount: 34,
-    createdAt: "2023-12-25",
-  },
-]
+type Product = {
+  id: number
+  name: string
+  description: string
+  imageUrl: string
+  owner: string
+  feedbackCount: number
+  createdAt: string
+}
+
+type ContractProduct = {
+  product_id: string | number
+  product_owner: string
+  ipfs_cid: string
+}
 
 export default function ProductsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "mostReviews">("newest")
-  const [isLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [products, setProducts] = useState<Product[]>([])
+  const [loadingIpfs, setLoadingIpfs] = useState(false)
 
-  const filteredProducts = mockProducts.filter(
-    (product) =>
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.description.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  // Fetch products from contract
+  const { data: productsRaw = [], isLoading, isError, error: fetchError } = getAllProducts()
 
-  const sortedProducts = [...filteredProducts].sort((a, b) => {
-    switch (sortBy) {
-      case "newest":
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      case "oldest":
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      case "mostReviews":
-        return b.feedbackCount - a.feedbackCount
-      default:
-        return 0
+  // Fetch product details from IPFS and transform to Product[]
+  useEffect(() => {
+    let ignore = false
+    async function fetchProducts() {
+      setLoadingIpfs(true)
+      setError(null)
+      try {
+        if (!productsRaw || !Array.isArray(productsRaw)) {
+          setProducts([])
+          setLoadingIpfs(false)
+          return
+        }
+
+        // Remove default/empty product (product_id 0 or empty ipfs_cid)
+        const filteredRaw: ContractProduct[] = productsRaw.filter(
+          (p: any) =>
+            p &&
+            p.product_id &&
+            Number(p.product_id) !== 0 &&
+            p.ipfs_cid &&
+            typeof p.ipfs_cid === "string" &&
+            p.ipfs_cid.length > 0
+        )
+
+        // Fetch IPFS data for each product
+        const productPromises = filteredRaw.map(async (p) => {
+          let ipfsData: any = {}
+          try {
+            const url = await getUploadedFile(p.ipfs_cid)
+            if (url) {
+              // Try to fetch the JSON metadata from IPFS
+              const res = await fetch(url)
+              if (res.ok) {
+                ipfsData = await res.json()
+              }
+            }
+          } catch (e) {
+            // If IPFS fetch fails, fallback to empty fields
+            ipfsData = {}
+          }
+          return {
+            id: Number(p.product_id),
+            name: ipfsData.name ?? "Unnamed Product",
+            description: ipfsData.description ?? "No description available.",
+            imageUrl: ipfsData.image ?? ipfsData.imageUrl ?? "https://placehold.co/400x300?text=No+Image",
+            owner: p.product_owner ?? "",
+            feedbackCount: ipfsData.feedbackCount ? Number(ipfsData.feedbackCount) : 0,
+            createdAt: ipfsData.createdAt
+              ? new Date(ipfsData.createdAt).toISOString().slice(0, 10)
+              : "1970-01-01",
+          } as Product
+        })
+
+        const productsArr = await Promise.all(productPromises)
+        if (!ignore) setProducts(productsArr)
+      } catch (err) {
+        setError("Failed to process product data.")
+        setProducts([])
+      } finally {
+        setLoadingIpfs(false)
+      }
     }
-  })
+    fetchProducts()
+    return () => {
+      ignore = true
+    }
+  }, [productsRaw])
 
-  if (isLoading) {
+  // Filter and sort products
+  const filteredProducts = useMemo(() => {
+    return products.filter(
+      (product) =>
+        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        product.description.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  }, [products, searchTerm])
+
+  const sortedProducts = useMemo(() => {
+    return [...filteredProducts].sort((a, b) => {
+      switch (sortBy) {
+        case "newest":
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        case "oldest":
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        case "mostReviews":
+          return b.feedbackCount - a.feedbackCount
+        default:
+          return 0
+      }
+    })
+  }, [filteredProducts, sortBy])
+
+  // Error handling for fetch
+  if (isError || error || fetchError) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <EmptyState
+          icon="products"
+          title="Error loading products"
+          description="There was a problem fetching products from the blockchain. Please try again later."
+          action={{
+            label: "Retry",
+            onClick: () => window.location.reload(),
+          }}
+        />
+      </div>
+    )
+  }
+
+  // Loading state (contract or IPFS)
+  if (isLoading || loadingIpfs) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-center items-center h-64">
           <LoadingSpinner size="lg" />
         </div>
+      </div>
+    )
+  }
+
+  // No products at all
+  if (!products || products.length === 0) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <EmptyState
+          icon="products"
+          title="No products available"
+          description="There are currently no products on the platform. Be the first to create one!"
+          action={{
+            label: "Create Product",
+            onClick: () => {
+              // TODO: Implement navigation to create product page
+            },
+          }}
+        />
       </div>
     )
   }
@@ -144,7 +219,7 @@ export default function ProductsPage() {
       {/* Results Count */}
       <div className="mb-6">
         <p className="text-white-600">
-          Showing {sortedProducts.length} of {mockProducts.length} products
+          Showing {sortedProducts.length} of {products.length} products
         </p>
       </div>
 
@@ -163,7 +238,7 @@ export default function ProductsPage() {
           action={{
             label: "Create Product",
             onClick: () => {
-              /* Navigate to create product */
+              // TODO: Implement navigation to create product page
             },
           }}
         />
@@ -172,7 +247,9 @@ export default function ProductsPage() {
       {/* Load More */}
       {sortedProducts.length > 0 && (
         <div className="text-center mt-12">
-          <button className="btn-outline">Load More Products</button>
+          <button className="btn-outline" disabled>
+            Load More Products
+          </button>
         </div>
       )}
     </div>

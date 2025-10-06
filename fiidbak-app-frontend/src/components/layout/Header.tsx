@@ -1,9 +1,10 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Menu, X, Home, User, Package, MessageSquare, Shield } from "lucide-react"
+import { Menu, X, Home, User, Package, MessageSquare, Shield, AlertTriangle } from "lucide-react"
 import { ConnectButton } from "@rainbow-me/rainbowkit"
+import { useAccount } from "wagmi"
 
 const navigation = [
   { name: "Home", href: "/", icon: Home },
@@ -13,13 +14,35 @@ const navigation = [
   { name: "Admin", href: "/admin-dashboard", icon: Shield },
 ]
 
+// Lisk Sepolia chainId: 4202 (decimal), 0x106A (hex)
+const LISK_SEPOLIA_CHAIN_ID = 4202
+
 export function Header() {
   const [isOpen, setIsOpen] = useState(false)
   const pathname = usePathname()
+  const { isConnected, chain } = useAccount()
+  const [showNetworkWarning, setShowNetworkWarning] = useState(false)
+
+  useEffect(() => {
+    if (isConnected && chain && chain.id !== LISK_SEPOLIA_CHAIN_ID) {
+      setShowNetworkWarning(true)
+    } else {
+      setShowNetworkWarning(false)
+    }
+  }, [chain, isConnected])
 
   return (
     <nav className="sticky top-0 z-50 glass-card border-b bg-black">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Network warning */}
+        {showNetworkWarning && (
+          <div className="flex items-center gap-2 bg-yellow-100 border border-yellow-300 text-yellow-900 px-4 py-2 rounded-md mt-4 mb-2">
+            <AlertTriangle className="text-yellow-600" size={18} />
+            <span>
+              Please switch your wallet to the <b>Lisk Sepolia</b> network to use Fiidbak.
+            </span>
+          </div>
+        )}
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2 mb-4">
