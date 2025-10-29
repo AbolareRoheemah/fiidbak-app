@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { ArrowLeft, MessageSquare, Plus, User } from "lucide-react"
 import { FeedbackCard } from "@/components/ui/FeedbackCard"
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner"
@@ -8,75 +8,60 @@ import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { useProductStore } from "@/store/useProductStore"
 
-// Mock feedbacks - replace with actual data from contracts
-const mockFeedbacks = [
-  {
-    id: 1,
-    content:
-      "This platform has revolutionized how I think about social media. The privacy features are outstanding and the community is incredibly supportive. The tokenomics are well thought out and I can actually earn from my content!",
-    author: "0xabcdef1234567890abcdef1234567890abcdef12",
-    authorTier: 3,
-    productId: 1,
-    positiveVotes: 15,
-    negativeVotes: 2,
-    totalVotes: 17,
-    approved: true,
-    createdAt: "2024-01-20",
-    hasUserVoted: false,
-    userVote: null,
-  },
-  {
-    id: 2,
-    content:
-      "Great concept but the UI needs some work. The onboarding process was a bit confusing for newcomers. However, the core functionality works well and the team is responsive to feedback.",
-    author: "0x9876543210fedcba9876543210fedcba98765432",
-    authorTier: 2,
-    productId: 1,
-    positiveVotes: 8,
-    negativeVotes: 3,
-    totalVotes: 11,
-    approved: true,
-    createdAt: "2024-01-18",
-    hasUserVoted: true,
-    userVote: true,
-  },
-  {
-    id: 3,
-    content:
-      "The gas fees are quite high during peak times, which makes it expensive to post content. The platform is good but needs better scaling solutions.",
-    author: "0xfedcba0987654321fedcba0987654321fedcba09",
-    authorTier: 4,
-    productId: 1,
-    positiveVotes: 5,
-    negativeVotes: 8,
-    totalVotes: 13,
-    approved: false,
-    createdAt: "2024-01-16",
-    hasUserVoted: false,
-    userVote: null,
-  },
+// --- Feedback contract hooks ---
+import {
+  useProductFeedbackIds,
+  useFeedback,
+  useWriteFeedback
+} from "@/hooks/useContract"
+
+type FeedbackStruct = [
+  productId: number | bigint,      // 0
+  content: string,                 // 1
+  author: string,                  // 2
+  unused?: any,                    // 3
+  positiveVotes?: number | bigint, // 4
+  negativeVotes?: number | bigint, // 5
+  authorTier?: number | bigint,    // 6
+  approved?: boolean,              // 7
+  createdAt?: number | bigint      // 8 (unix timestamp, optional)
 ]
+
+// The minimum valid type for normalized feedback
+type Feedback = {
+  id: number | bigint
+  content: string
+  author: string
+  authorTier: number | bigint
+  productId: number | bigint
+  positiveVotes: number | bigint
+  negativeVotes: number | bigint
+  totalVotes: number
+  approved: boolean
+  createdAt?: string
+  hasUserVoted: boolean
+  userVote: null
+}
 
 export default function ProductDetailPage() {
   const { id } = useParams()
   const router = useRouter()
-  const [feedbacks, setFeedbacks] = useState(mockFeedbacks)
   const [showFeedbackForm, setShowFeedbackForm] = useState(false)
   const [newFeedback, setNewFeedback] = useState("")
   const [isFetchingProduct, setIsFetchingProduct] = useState(false)
+  const [feedbackRefreshCount, setFeedbackRefreshCount] = useState(0) // <- NEW STATE
 
   // Zustand store
-  const { 
-    getProductById, 
-    selectedProduct, 
+  const {
+    getProductById,
+    selectedProduct,
     setSelectedProduct,
-    hasProducts 
+    hasProducts
   } = useProductStore()
 
-  // Load product from store or redirect to products page
+  // --- Load product from store or redirect to products page
   useEffect(() => {
     const productId = Number(id)
-    
     if (isNaN(productId)) {
       router.push("/products")
       return
@@ -84,15 +69,12 @@ export default function ProductDetailPage() {
 
     // Try to get product from store
     const product = getProductById(productId)
-    
     if (product) {
       setSelectedProduct(product)
     } else if (!hasProducts()) {
-      // No products in store, redirect to products page to load them
       setIsFetchingProduct(true)
       router.push("/products")
     } else {
-      // Products exist but this ID not found
       setIsFetchingProduct(true)
       // Wait a bit then redirect (in case products are still loading)
       const timer = setTimeout(() => {
@@ -102,23 +84,115 @@ export default function ProductDetailPage() {
     }
   }, [id, getProductById, setSelectedProduct, hasProducts, router])
 
+  // Parse productIdNum as plain variable (not useMemo)
+  const n = Number(id)
+  const productIdNum = isNaN(n) ? undefined : n
+
+  // --- Fetch feedback ids array for this product
+  const { data: feedbackIdData, isLoading: isLoadingIds, refetch: refetchFeedbackIds } = useProductFeedbackIds(productIdNum)
+  // Ensure feedbackIdData is always an array
+  const feedbackIds: (bigint | number)[] = Array.isArray(feedbackIdData) ? feedbackIdData : []
+
+  // --- Custom fetch of all feedback items --- //
+  const [feedbacksState, setFeedbacksState] = useState<{ isLoading: boolean; items: Feedback[] }>({
+    isLoading: false,
+    items: [],
+  })
+
+  // IMPROVED FEEDBACK RELOAD LOGIC:
+  // Add feedbackRefreshCount to effect dependencies so we can force reload.
+  useEffect(() => {
+    let cancelled = false
+    async function fetchAllFeedbacks() {
+      if (!feedbackIds.length) {
+        setFeedbacksState({ isLoading: false, items: [] })
+        return
+      }
+      setFeedbacksState(prev => ({ ...prev, isLoading: true }))
+      // The following logic is unchanged: call useFeedback for up to LIMIT feedbacks
+      try {
+        const LIMIT = 20
+        if (feedbackIds.length > LIMIT) {
+          setFeedbacksState({ isLoading: false, items: [] })
+          return
+        }
+        let paddedFeedbackIds = [...feedbackIds]
+        if (paddedFeedbackIds.length < LIMIT) {
+          paddedFeedbackIds = [
+            ...paddedFeedbackIds,
+            ...Array(LIMIT - paddedFeedbackIds.length).fill(null)
+          ]
+        }
+        const feedbackResults = paddedFeedbackIds.map(feedbackId =>
+          feedbackId == null ? { data: undefined, isLoading: false } : useFeedback(feedbackId)
+        )
+        const normalized: Feedback[] = []
+        feedbackResults.forEach((f, i) => {
+          if (!feedbackIds[i]) return // only take original ids
+          const d = f?.data as FeedbackStruct | undefined
+          if (!d) return
+          normalized.push({
+            id: feedbackIds[i],
+            content: d[1] ?? "",
+            author: d[2] ?? "",
+            authorTier: (d[6] ?? 1) as number | bigint,
+            productId: d[0],
+            positiveVotes: d[4] ?? 0,
+            negativeVotes: d[5] ?? 0,
+            totalVotes: (Number(d[4] || 0) + Number(d[5] || 0)),
+            approved: d[7] ?? false,
+            createdAt: d[8] ? new Date(Number(d[8]) * 1000).toISOString().substring(0, 10) : undefined,
+            hasUserVoted: false,
+            userVote: null,
+          })
+        })
+        if (!cancelled) setFeedbacksState({ isLoading: false, items: normalized })
+      } catch (err) {
+        if (!cancelled) setFeedbacksState({ isLoading: false, items: [] })
+      }
+    }
+    fetchAllFeedbacks()
+    return () => { cancelled = true }
+    // Use both feedbackIds and feedbackRefreshCount as dependencies
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(Number(feedbackIds)), feedbackRefreshCount])
+
+  // Compose normalized feedback objects for rendering
+  const normalizedFeedbacks: Feedback[] = feedbacksState.items
+
+  // Submit feedback hook
+  const {
+    giveFeedback,
+    isFeedbackLoading
+  } = useWriteFeedback(async () => {
+    setNewFeedback("")
+    setShowFeedbackForm(false)
+    // After successful feedback submission, trigger feedback refresh!
+    // First, try to refetch the feedback IDs from the contract (will update the feedbackIds array)
+    if (typeof refetchFeedbackIds === "function") {
+      await refetchFeedbackIds()
+    }
+    // But in any case also increment local refresh counter to force reload of feedbacks
+    setFeedbackRefreshCount(x => x + 1)
+  })
+
+  // -------- Util handlers --------
   const formatAddress = (address: string) => {
+    if (!address || address.length < 10) return address
     return `${address.slice(0, 6)}...${address.slice(-4)}`
   }
 
-  const handleVote = async (feedbackId: number, isPositive: boolean) => {
+  const handleVote = async (feedbackId: number | bigint, isPositive: boolean) => {
     // TODO: Implement voting logic with smart contract
+    // (probably need a useVoteFeedback/write contract hook)
     console.log("Voting on feedback:", feedbackId, isPositive)
   }
 
-  const handleSubmitFeedback = async () => {
-    if (!newFeedback.trim()) return
-
-    // TODO: Implement feedback submission with smart contract
-    console.log("Submitting feedback:", newFeedback)
-    setNewFeedback("")
-    setShowFeedbackForm(false)
-  }
+  // UseCallback recommended, but not forced, for latest closure
+  const handleSubmitFeedback = useCallback(async () => {
+    if (!newFeedback.trim() || !selectedProduct) return
+    await giveFeedback(Number(selectedProduct.id), newFeedback)
+  }, [giveFeedback, newFeedback, selectedProduct])
 
   if (isFetchingProduct || !selectedProduct) {
     return (
@@ -129,6 +203,8 @@ export default function ProductDetailPage() {
       </div>
     )
   }
+
+  const approvedCount = normalizedFeedbacks.filter(f => !!f && f.approved).length
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -180,7 +256,7 @@ export default function ProductDetailPage() {
                 <div>
                   <h3 className="text-lg font-semibold text-white-900 mb-3">Tags</h3>
                   <div className="flex flex-wrap gap-2">
-                    {selectedProduct.tags.map((tag, index) => (
+                    {selectedProduct.tags.map((tag: string, index: number) => (
                       <span
                         key={index}
                          className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium"
@@ -213,7 +289,7 @@ export default function ProductDetailPage() {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-white-900 flex items-center space-x-2">
                 <MessageSquare size={24} />
-                <span>Feedback ({feedbacks.length})</span>
+                <span>Feedback ({normalizedFeedbacks.length})</span>
               </h2>
               <button
                 onClick={() => setShowFeedbackForm(!showFeedbackForm)}
@@ -233,11 +309,16 @@ export default function ProductDetailPage() {
                   onChange={(e) => setNewFeedback(e.target.value)}
                   placeholder="Share your honest feedback about this product..."
                   rows={4}
-                  className="w-full input-field mb-4"
+                  className="w-full input-field mb-4 text-black"
+                  disabled={isFeedbackLoading}
                 />
                 <div className="flex space-x-3">
-                  <button onClick={handleSubmitFeedback} className="btn-primary cursor-pointer">
-                    Submit Feedback
+                  <button
+                    onClick={handleSubmitFeedback}
+                    className="btn-primary cursor-pointer"
+                    disabled={isFeedbackLoading}
+                  >
+                    {isFeedbackLoading ? "Submitting..." : "Submit Feedback"}
                   </button>
                   <button
                     onClick={() => {
@@ -245,6 +326,7 @@ export default function ProductDetailPage() {
                       setNewFeedback("")
                     }}
                     className="btn-secondary cursor-pointer"
+                    disabled={isFeedbackLoading}
                   >
                     Cancel
                   </button>
@@ -253,11 +335,15 @@ export default function ProductDetailPage() {
             )}
 
             {/* Feedback List */}
-            {feedbacks.length > 0 ? (
+            {(isLoadingIds || feedbacksState.isLoading) ? (
+              <div className="flex justify-center py-8">
+                <LoadingSpinner size="lg" />
+              </div>
+            ) : normalizedFeedbacks.length > 0 ? (
               <div className="space-y-6">
-                {feedbacks.map((feedback) => (
+                {normalizedFeedbacks.map((feedback) => (
                   <FeedbackCard
-                    key={feedback.id}
+                    key={String(feedback.id)}
                     feedback={feedback}
                     onVote={handleVote}
                     canVote={true}
@@ -290,7 +376,7 @@ export default function ProductDetailPage() {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-white-600">Approved Reviews</span>
-                <span className="font-semibold">{feedbacks.filter((f) => f.approved).length}</span>
+                <span className="font-semibold">{approvedCount}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-white-600">Average Rating</span>

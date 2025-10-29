@@ -15,6 +15,8 @@ export enum ContractError {
   TokenLimitExceeded = 'You cant get more than 10WAG tokens at a time'
 }
 
+// ---------- Product ----------
+
 // Read: Get all products
 export function getAllProducts(args: [number, number] = [10, 0]) {
   return useReadContract({
@@ -73,7 +75,7 @@ export function useCreateProduct(onSuccess?: () => void) {
     }
     if (writeError || confirmError) {
       toast.error(parseContractError(writeError || confirmError));
-      console.log('Create product error:', parseContractError(writeError || confirmError));
+      console.log("Create product error:", parseContractError(writeError || confirmError));
     }
   }, [writeError, confirmError, isCreateSuccess, onSuccess]);
 
@@ -86,31 +88,133 @@ export function useCreateProduct(onSuccess?: () => void) {
   };
 }
 
+// ---------- Feedback (READ/WRITE HOOKS) ----------
+
+// Read: Fetch all feedback ids for a product
+export function useProductFeedbackIds(productId?: number | bigint) {
+  // If no productId, skip query
+  return useReadContract({
+    abi: FEEDBACK_MANAGER_ABI,
+    address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+    functionName: "getProductFeedbacks",
+    args: typeof productId === "undefined" ? undefined : [productId],
+    query: {
+      enabled: typeof productId !== "undefined",
+    },
+  });
+}
+
+// Read: Fetch a feedback by feedbackId
+export function useFeedback(feedbackId?: number | bigint) {
+  return useReadContract({
+    abi: FEEDBACK_MANAGER_ABI,
+    address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+    functionName: "getFeedback",
+    args: typeof feedbackId === "undefined" ? undefined : [feedbackId],
+    query: {
+      enabled: typeof feedbackId !== "undefined",
+    },
+  });
+}
+
+// Write: Submit Feedback to contract
+export function useWriteFeedback(onSuccess?: () => void) {
+  const {
+    data: writeData,
+    writeContract,
+    error: writeError,
+    isPending: isFeedbackLoading,
+  } = useWriteContract();
+  const { isSuccess: isFeedbackSuccess, error: confirmError } = useWaitForTransactionReceipt({
+    hash: writeData,
+  });
+
+  // submitFeedback(productId, feedbackHash)
+  const giveFeedback = useCallback(
+    async (productId: number | bigint, feedbackHash: string) => {
+      try {
+        // Simulate transaction first
+        await simulateContract(config, {
+          abi: FEEDBACK_MANAGER_ABI,
+          address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+          functionName: "submitFeedback",
+          args: [BigInt(productId), feedbackHash],
+        });
+
+        writeContract({
+          abi: FEEDBACK_MANAGER_ABI,
+          address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+          functionName: "submitFeedback",
+          args: [BigInt(productId), feedbackHash],
+        });
+      } catch (error) {
+        const errorMessage = parseContractError(error);
+        toast.error(errorMessage);
+      }
+    },
+    [writeContract]
+  );
+
+  useEffect(() => {
+    if (isFeedbackSuccess) {
+      toast.success("Feedback submitted successfully!");
+      if (onSuccess) {
+        onSuccess();
+      }
+    }
+    if (writeError || confirmError) {
+      toast.error(parseContractError(writeError || confirmError));
+      console.log("Submit feedback error:", parseContractError(writeError || confirmError));
+    }
+  }, [writeError, confirmError, isFeedbackSuccess, onSuccess]);
+
+  return {
+    giveFeedback,
+    isFeedbackLoading,
+    isFeedbackSuccess,
+    error: writeError || confirmError,
+    hash: writeData,
+  };
+}
+
+// Read: Fetch multiple feedbacks in a range [startIndex, count] (all feedbacks)
+export function useAllFeedbacksByRange(
+  startIndex: number | bigint = 0,
+  count: number | bigint = 20
+) {
+  return useReadContract({
+    abi: FEEDBACK_MANAGER_ABI,
+    address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+    functionName: "getFeedbacksByRange",
+    args: [BigInt(startIndex), BigInt(count)],
+  });
+}
+
 // Utility: Parse contract errors for user-friendly messages
 function parseContractError(error: unknown): string {
   // console.log('Contract error details:', error);
 
   if (error instanceof BaseError) {
-    const revertError = error.walk(error => error instanceof ContractFunctionRevertedError);
+    const revertError = error.walk((error) => error instanceof ContractFunctionRevertedError);
     if (revertError instanceof ContractFunctionRevertedError) {
-      const errorName = revertError.data?.errorName ?? '';
+      const errorName = revertError.data?.errorName ?? "";
       return getErrorMessage(errorName) || (error as { shortMessage: string }).shortMessage;
     }
   }
 
   if (error instanceof Error) {
-    if (error.message.toLowerCase().includes('insufficient funds')) {
-      return 'Insufficient funds for gas';
+    if (error.message.toLowerCase().includes("insufficient funds")) {
+      return "Insufficient funds for gas";
     }
-    if (error.message.toLowerCase().includes('gas required exceeds allowance')) {
-      return 'Transaction would fail - please check your inputs';
+    if (error.message.toLowerCase().includes("gas required exceeds allowance")) {
+      return "Transaction would fail - please check your inputs";
     }
-    if (error.message.toLowerCase().includes('user rejected')) {
-      return 'Transaction was rejected by user';
+    if (error.message.toLowerCase().includes("user rejected")) {
+      return "Transaction was rejected by user";
     }
   }
 
-  return 'An unexpected error occurred. Please check your inputs and try again.';
+  return "An unexpected error occurred. Please check your inputs and try again.";
 }
 
 function getErrorMessage(errorType: string): string {
