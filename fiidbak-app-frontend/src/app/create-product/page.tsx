@@ -23,7 +23,7 @@ export default function CreateProductPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
 
   const { address } = useAccount()
-  const { createProduct, isCreateLoading } = useCreateProduct()
+  const { createProduct, isCreateLoading, isCreateSuccess } = useCreateProduct(() => router.push('/products'))
 
   const categories = [
     'DeFi',
@@ -100,16 +100,11 @@ export default function CreateProductPage() {
       // If image is present, include it in the upload
       let ipfsCid: string
       ipfsCid = await uploadJsonToPinata(ipfsPayload)
-      // if (formData.image) {
-      //   ipfsCid = await uploadFileToPinata(ipfsPayload, formData.image)
-      // } else {
-      //   ipfsCid = await uploadFileToPinata(ipfsPayload)
-      // }
 
       // 2. Call the contract to mint the product NFT
       await createProduct(address as `0x${string}`, 1, ipfsCid)
       // Success toast will be handled by the hook, but we can optimistically route
-      router.push('/products')
+      // router.push('/products')
     } catch (error) {
       toast.error('Failed to create product. Please try again.')
       console.error('Error creating product:', error)
@@ -132,7 +127,7 @@ export default function CreateProductPage() {
       <div className="mb-8">
         <button
           onClick={() => router.push('/products')}
-          className="flex items-center space-x-2 text-white-600 hover:text-white-900 mb-4"
+          className="flex items-center space-x-2 text-white-600 hover:text-white-900 mb-4 cursor-pointer"
         >
           <ArrowLeft size={20} />
           <span>Back to Products</span>
@@ -240,7 +235,7 @@ export default function CreateProductPage() {
                     setImagePreview(null)
                     setFormData(prev => ({ ...prev, image: null }))
                   }}
-                  className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                  className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 cursor-pointer"
                 >
                   <X size={16} />
                 </button>
@@ -284,7 +279,7 @@ export default function CreateProductPage() {
               <button
                 type="button"
                 onClick={addTag}
-                className="btn-primary"
+                className="btn-primary cursor-pointer"
               >
                 Add
               </button>
@@ -301,7 +296,7 @@ export default function CreateProductPage() {
                     <button
                       type="button"
                       onClick={() => removeTag(tag)}
-                      className="text-primary-500 hover:text-primary-700"
+                      className="text-primary-500 hover:text-primary-700 cursor-pointer"
                     >
                       <X size={14} />
                     </button>
@@ -317,18 +312,18 @@ export default function CreateProductPage() {
           <button
             type="button"
             onClick={() => router.push('/products')}
-            className="btn-secondary"
-            disabled={isLoading || isCreateLoading}
+            className="btn-secondary cursor-pointer"
+            disabled={isLoading || isCreateLoading || isCreateSuccess}
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="btn-primary flex items-center space-x-2"
-            disabled={isLoading || isCreateLoading}
+            className="btn-primary flex items-center space-x-2 cursor-pointer"
+            disabled={isLoading || isCreateLoading || isCreateSuccess}
           >
-            {(isLoading || isCreateLoading) && <LoadingSpinner size="sm" />}
-            <span>{(isLoading || isCreateLoading) ? 'Creating...' : 'Create Product'}</span>
+            {(isLoading || isCreateLoading || isCreateSuccess) && <LoadingSpinner size="sm" />}
+            <span>{(isLoading || isCreateLoading || isCreateSuccess) ? 'Creating...' : 'Create Product'}</span>
           </button>
         </div>
       </form>

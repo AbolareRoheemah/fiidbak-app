@@ -1,27 +1,14 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { ArrowLeft, MessageSquare, Plus, User } from "lucide-react"
 import { FeedbackCard } from "@/components/ui/FeedbackCard"
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner"
 import { EmptyState } from "@/components/ui/EmptyState"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
+import { useProductStore } from "@/store/useProductStore"
 
-// Mock data - replace with actual data from contracts
-const mockProduct = {
-  id: 1,
-  name: "Decentralized Social Media Platform",
-  description:
-    "A revolutionary blockchain-based social media platform that gives users complete ownership of their data and content. Built on Ethereum with IPFS for decentralized storage, this platform ensures privacy, censorship resistance, and fair monetization for creators.",
-  imageUrl: "https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=800",
-  owner: "0x1234567890abcdef1234567890abcdef12345678",
-  feedbackCount: 23,
-  createdAt: "2024-01-15",
-  category: "Social Media",
-  website: "https://example.com",
-  tags: ["Web3", "Social Media", "Privacy", "DeFi"],
-}
-
+// Mock feedbacks - replace with actual data from contracts
 const mockFeedbacks = [
   {
     id: 1,
@@ -72,11 +59,48 @@ const mockFeedbacks = [
 
 export default function ProductDetailPage() {
   const { id } = useParams()
-  const [product, setProduct] = useState(mockProduct)
+  const router = useRouter()
   const [feedbacks, setFeedbacks] = useState(mockFeedbacks)
-  const [isLoading, setIsLoading] = useState(false)
   const [showFeedbackForm, setShowFeedbackForm] = useState(false)
   const [newFeedback, setNewFeedback] = useState("")
+  const [isFetchingProduct, setIsFetchingProduct] = useState(false)
+
+  // Zustand store
+  const { 
+    getProductById, 
+    selectedProduct, 
+    setSelectedProduct,
+    hasProducts 
+  } = useProductStore()
+
+  // Load product from store or redirect to products page
+  useEffect(() => {
+    const productId = Number(id)
+    
+    if (isNaN(productId)) {
+      router.push("/products")
+      return
+    }
+
+    // Try to get product from store
+    const product = getProductById(productId)
+    
+    if (product) {
+      setSelectedProduct(product)
+    } else if (!hasProducts()) {
+      // No products in store, redirect to products page to load them
+      setIsFetchingProduct(true)
+      router.push("/products")
+    } else {
+      // Products exist but this ID not found
+      setIsFetchingProduct(true)
+      // Wait a bit then redirect (in case products are still loading)
+      const timer = setTimeout(() => {
+        router.push("/products")
+      }, 2000)
+      return () => clearTimeout(timer)
+    }
+  }, [id, getProductById, setSelectedProduct, hasProducts, router])
 
   const formatAddress = (address: string) => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`
@@ -96,7 +120,7 @@ export default function ProductDetailPage() {
     setShowFeedbackForm(false)
   }
 
-  if (isLoading) {
+  if (isFetchingProduct || !selectedProduct) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-center items-center h-64">
@@ -119,38 +143,54 @@ export default function ProductDetailPage() {
         <div className="lg:col-span-2">
           <div className="card mb-8">
             <div className="aspect-w-16 aspect-h-9 mb-6 rounded-lg overflow-hidden bg-gray-100">
-              <img src={product.imageUrl} alt={product.name} className="w-full h-64 object-cover" />
+              <img src={selectedProduct.imageUrl} alt={selectedProduct.name} className="w-full h-100 object-cover" />
             </div>
 
             <div className="space-y-6">
               <div>
-                <h1 className="text-3xl font-bold text-white-900 mb-2">{product.name}</h1>
+                <h1 className="text-3xl font-bold text-white-900 mb-2">{selectedProduct.name}</h1>
                 <div className="flex items-center space-x-4 text-sm text-gray-500 mb-4">
-                  <span>Created {new Date(product.createdAt).toLocaleDateString()}</span>
-                  <span>•</span>
-                  <span>{product.feedbackCount} reviews</span>
+                  {/* {selectedProduct.createdAt && (
+                    <>
+                      <span>Created {new Date(selectedProduct.createdAt).toLocaleDateString()}</span>
+                      <span>•</span>
+                    </>
+                  )} */}
+                  <span>{selectedProduct.feedbackCount} reviews</span>
                 </div>
               </div>
 
               <div>
                 <h2 className="text-xl font-semibold text-white-900 mb-3">Description</h2>
-                <p className="text-white-700 leading-relaxed">{product.description}</p>
+                <p className="text-white-700 leading-relaxed">{selectedProduct.description}</p>
               </div>
 
-              {/* Tags */}
-              <div>
-                <h3 className="text-lg font-semibold text-white-900 mb-3">Tags</h3>
-                <div className="flex flex-wrap gap-2">
-                  {product.tags.map((tag, index) => (
-                    <span
-                      key={index}
-                      className="px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-sm font-medium"
-                    >
-                      {tag}
-                    </span>
-                  ))}
+              {/* Category */}
+              {selectedProduct.category && (
+                <div>
+                  <h3 className="text-lg font-semibold text-white-900 mb-3">Category</h3>
+                  <span className="px-3 py-1 text-blue-700 text-sm font-medium">
+                    {selectedProduct.category}
+                  </span>
                 </div>
-              </div>
+              )}
+
+              {/* Tags */}
+              {selectedProduct.tags && selectedProduct.tags.length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold text-white-900 mb-3">Tags</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedProduct.tags.map((tag, index) => (
+                      <span
+                        key={index}
+                         className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Owner Info */}
               <div>
@@ -160,7 +200,7 @@ export default function ProductDetailPage() {
                     <User size={20} className="text-white-600" />
                   </div>
                   <div>
-                    <div className="font-medium text-white-900">{formatAddress(product.owner)}</div>
+                    <div className="font-medium text-white-900">{formatAddress(selectedProduct.owner)}</div>
                     <div className="text-sm text-gray-500">Product Owner</div>
                   </div>
                 </div>
@@ -177,7 +217,7 @@ export default function ProductDetailPage() {
               </h2>
               <button
                 onClick={() => setShowFeedbackForm(!showFeedbackForm)}
-                className="btn-primary flex items-center space-x-2"
+                className="btn-primary flex items-center space-x-2 cursor-pointer"
               >
                 <Plus size={20} />
                 <span>Add Feedback</span>
@@ -187,7 +227,7 @@ export default function ProductDetailPage() {
             {/* Feedback Form */}
             {showFeedbackForm && (
               <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                <h3 className="font-semibold text-white-900 mb-3">Share your feedback</h3>
+                <h3 className="font-semibold text-white-900 mb-3 cursor-pointer">Share your feedback</h3>
                 <textarea
                   value={newFeedback}
                   onChange={(e) => setNewFeedback(e.target.value)}
@@ -196,7 +236,7 @@ export default function ProductDetailPage() {
                   className="w-full input-field mb-4"
                 />
                 <div className="flex space-x-3">
-                  <button onClick={handleSubmitFeedback} className="btn-primary">
+                  <button onClick={handleSubmitFeedback} className="btn-primary cursor-pointer">
                     Submit Feedback
                   </button>
                   <button
@@ -204,7 +244,7 @@ export default function ProductDetailPage() {
                       setShowFeedbackForm(false)
                       setNewFeedback("")
                     }}
-                    className="btn-secondary"
+                    className="btn-secondary cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -220,7 +260,7 @@ export default function ProductDetailPage() {
                     key={feedback.id}
                     feedback={feedback}
                     onVote={handleVote}
-                    canVote={true} // TODO: Check user's badge tier
+                    canVote={true}
                   />
                 ))}
               </div>
@@ -246,7 +286,7 @@ export default function ProductDetailPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-white-600">Total Reviews</span>
-                <span className="font-semibold">{product.feedbackCount}</span>
+                <span className="font-semibold">{selectedProduct.feedbackCount}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-white-600">Approved Reviews</span>
@@ -263,11 +303,11 @@ export default function ProductDetailPage() {
           <div className="card">
             <h3 className="text-lg font-semibold text-white-900 mb-4">Quick Actions</h3>
             <div className="space-y-3">
-              <button className="w-full btn-primary">Share Product</button>
-              <button className="w-full btn-outline">Report Issue</button>
-              {product.website && (
+              <button className="w-full btn-primary cursor-pointer">Share Product</button>
+              <button className="w-full btn-outline cursor-pointer">Report Issue</button>
+              {selectedProduct.website && (
                 <a
-                  href={product.website}
+                  href={selectedProduct.website}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full btn-secondary block text-center"

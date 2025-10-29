@@ -1,10 +1,10 @@
 "use client"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Menu, X, Home, User, Package, MessageSquare, Shield, AlertTriangle } from "lucide-react"
 import { ConnectButton } from "@rainbow-me/rainbowkit"
-import { useAccount } from "wagmi"
+import { useAccount, useSwitchChain } from "wagmi"
 
 const navigation = [
   { name: "Home", href: "/", icon: Home },
@@ -22,14 +22,13 @@ export function Header() {
   const pathname = usePathname()
   const { isConnected, chain } = useAccount()
   const [showNetworkWarning, setShowNetworkWarning] = useState(false)
+  const { switchChain, isPending: isSwitching } = useSwitchChain()
+
+  const isWrongNetwork = isConnected && chain && chain.id !== LISK_SEPOLIA_CHAIN_ID
 
   useEffect(() => {
-    if (isConnected && chain && chain.id !== LISK_SEPOLIA_CHAIN_ID) {
-      setShowNetworkWarning(true)
-    } else {
-      setShowNetworkWarning(false)
-    }
-  }, [chain, isConnected])
+    setShowNetworkWarning(isWrongNetwork || false)
+  }, [isWrongNetwork])
 
   // Prevent scrolling when mobile menu is open
   useEffect(() => {
@@ -43,6 +42,58 @@ export function Header() {
     }
   }, [isOpen])
 
+  // --- Listen for route changes and reload if on /products, but only if navigated from another page ---
+  const lastPathRef = useRef<string | null>(null)
+  useEffect(() => {
+    // Only reload if navigating to /products from a different path
+    if (
+      pathname === "/products" &&
+      lastPathRef.current !== null &&
+      lastPathRef.current !== "/products"
+    ) {
+      // Use setTimeout to avoid React hydration issues
+      setTimeout(() => {
+        window.location.reload()
+      }, 0)
+    }
+    lastPathRef.current = pathname
+  }, [pathname])
+  // ----------------------------------------------------------------------
+
+  // Handler to switch to Lisk Sepolia
+  const handleSwitchChain = useCallback(
+    (e?: React.MouseEvent) => {
+      if (e) e.preventDefault()
+      if (switchChain) {
+        switchChain({ chainId: LISK_SEPOLIA_CHAIN_ID })
+      }
+    },
+    [switchChain]
+  )
+
+  // Custom ConnectButton that shows "Switch Network" if on wrong chain
+  function CustomConnectButton() {
+    if (isWrongNetwork) {
+      return (
+        <button
+          onClick={handleSwitchChain}
+          disabled={isSwitching}
+          className="btn-primary flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200"
+        >
+          <AlertTriangle className="text-yellow-400" size={18} />
+          <span>{isSwitching ? "Switching..." : "Switch Network"}</span>
+        </button>
+      )
+    }
+    return (
+      <ConnectButton
+        showBalance={false}
+        chainStatus="icon"
+        accountStatus="address"
+      />
+    )
+  }
+
   return (
     <nav className="sticky top-0 z-50 glass-card border-b bg-black w-full">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -53,6 +104,14 @@ export function Header() {
             <span>
               Please switch your wallet to the <b>Lisk Sepolia</b> network to use Fiidbak.
             </span>
+            <button
+              onClick={handleSwitchChain}
+              disabled={isSwitching}
+              className="ml-4 px-3 py-1 rounded bg-yellow-300 text-yellow-900 font-semibold hover:bg-yellow-400 transition-colors"
+              style={{ minWidth: 120 }}
+            >
+              {isSwitching ? "Switching..." : "Switch Network"}
+            </button>
           </div>
         )}
         <div className="flex items-center justify-between h-16 w-full">
@@ -88,11 +147,7 @@ export function Header() {
 
           {/* Connect Wallet Button */}
           <div className="hidden md:flex items-center space-x-4">
-            <ConnectButton
-              showBalance={false}
-              chainStatus="icon"
-              accountStatus="address"
-            />
+            <CustomConnectButton />
           </div>
 
           {/* Mobile menu button */}
@@ -165,11 +220,7 @@ export function Header() {
             })}
           </nav>
           <div className="px-4 pb-6 border-t border-border">
-            <ConnectButton
-              showBalance={false}
-              chainStatus="icon"
-              accountStatus="address"
-            />
+            <CustomConnectButton />
           </div>
         </div>
       </div>

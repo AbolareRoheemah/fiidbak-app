@@ -16,17 +16,18 @@ export enum ContractError {
 }
 
 // Read: Get all products
-export function getAllProducts() {
+export function getAllProducts(args: [number, number] = [10, 0]) {
   return useReadContract({
     abi: PRODUCT_NFT_ABI,
     address: CONTRACT_ADDRESSES.PRODUCT_NFT,
     functionName: "getAllProducts",
-    args: [10, 0],
+    args,
   });
 }
 
 // Write: Create a new product (mintProduct)
-export function useCreateProduct() {
+// Accepts an optional onSuccess callback for navigation or other side effects
+export function useCreateProduct(onSuccess?: () => void) {
   const { data: writeData, writeContract, error: writeError, isPending: isCreateLoading } = useWriteContract();
   const { 
     isSuccess: isCreateSuccess,
@@ -66,12 +67,15 @@ export function useCreateProduct() {
   useEffect(() => {
     if (isCreateSuccess) {
       toast.success("Product created successfully!");
+      if (onSuccess) {
+        onSuccess();
+      }
     }
     if (writeError || confirmError) {
       toast.error(parseContractError(writeError || confirmError));
       console.log('Create product error:', parseContractError(writeError || confirmError));
     }
-  }, [writeError, confirmError, isCreateSuccess]);
+  }, [writeError, confirmError, isCreateSuccess, onSuccess]);
 
   return {
     createProduct,
