@@ -2,7 +2,7 @@ import { PRODUCT_NFT_ABI } from "@/lib/product_nft_abi";
 import { BADGE_NFT_ABI } from "@/lib/badge_nft_abi";
 import { FEEDBACK_MANAGER_ABI } from "@/lib/feedback_mg_abi";
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { simulateContract } from '@wagmi/core';
 import { config } from "@/app/wagmi";
 import { CONTRACT_ADDRESSES } from "@/lib/contracts";
@@ -123,16 +123,26 @@ export function useWriteFeedback(onSuccess?: () => void) {
     data: writeData,
     writeContract,
     error: writeError,
-    isPending: isFeedbackLoading,
+    isPending: isWritePending,
   } = useWriteContract();
-  const { isSuccess: isFeedbackSuccess, error: confirmError } = useWaitForTransactionReceipt({
+  const {
+    isLoading: isConfirming,
+    isSuccess: isFeedbackSuccess,
+    error: confirmError
+  } = useWaitForTransactionReceipt({
     hash: writeData,
   });
+
+  // Track if we've already shown success toast to prevent duplicates
+  const [hasShownSuccess, setHasShownSuccess] = useState(false);
 
   // submitFeedback(productId, feedbackHash)
   const giveFeedback = useCallback(
     async (productId: number | bigint, feedbackHash: string) => {
       try {
+        // Reset success flag
+        setHasShownSuccess(false);
+
         // Simulate transaction first
         await simulateContract(config, {
           abi: FEEDBACK_MANAGER_ABI,
@@ -156,7 +166,8 @@ export function useWriteFeedback(onSuccess?: () => void) {
   );
 
   useEffect(() => {
-    if (isFeedbackSuccess) {
+    if (isFeedbackSuccess && !hasShownSuccess) {
+      setHasShownSuccess(true);
       toast.success("Feedback submitted successfully!");
       if (onSuccess) {
         onSuccess();
@@ -166,7 +177,10 @@ export function useWriteFeedback(onSuccess?: () => void) {
       toast.error(parseContractError(writeError || confirmError));
       console.log("Submit feedback error:", parseContractError(writeError || confirmError));
     }
-  }, [writeError, confirmError, isFeedbackSuccess, onSuccess]);
+  }, [writeError, confirmError, isFeedbackSuccess, hasShownSuccess, onSuccess]);
+
+  // Loading is true when either writing or confirming
+  const isFeedbackLoading = isWritePending || isConfirming;
 
   return {
     giveFeedback,
@@ -223,4 +237,107 @@ function getErrorMessage(errorType: string): string {
     // Add more custom error mappings as needed
   };
   return errorMessages[errorType] || "";
+}
+
+// ---------- Voting ----------
+
+// Write: Vote on feedback
+export function useVoteFeedback(onSuccess?: () => void) {
+  const {
+    data: writeData,
+    writeContract,
+    error: writeError,
+    isPending: isVoteLoading,
+  } = useWriteContract();
+  const { isSuccess: isVoteSuccess, error: confirmError } = useWaitForTransactionReceipt({
+    hash: writeData,
+  });
+
+  // voteOnFeedback(feedbackId, isPositive)
+  const voteOnFeedback = useCallback(
+    async (feedbackId: number | bigint, isPositive: boolean) => {
+      try {
+        // Simulate transaction first
+        await simulateContract(config, {
+          abi: FEEDBACK_MANAGER_ABI,
+          address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+          functionName: "voteOnFeedback",
+          args: [BigInt(feedbackId), isPositive],
+        });
+
+        writeContract({
+          abi: FEEDBACK_MANAGER_ABI,
+          address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+          functionName: "voteOnFeedback",
+          args: [BigInt(feedbackId), isPositive],
+        });
+      } catch (error) {
+        const errorMessage = parseContractError(error);
+        toast.error(errorMessage);
+      }
+    },
+    [writeContract]
+  );
+
+  useEffect(() => {
+    if (isVoteSuccess) {
+      toast.success("Vote submitted successfully!");
+      if (onSuccess) {
+        onSuccess();
+      }
+    }
+    if (writeError || confirmError) {
+      toast.error(parseContractError(writeError || confirmError));
+      console.log("Vote error:", parseContractError(writeError || confirmError));
+    }
+  }, [writeError, confirmError, isVoteSuccess, onSuccess]);
+
+  return {
+    voteOnFeedback,
+    isVoteLoading,
+    isVoteSuccess,
+    error: writeError || confirmError,
+    hash: writeData,
+  };
+}
+
+// Read: Check if user has voted on a feedback
+export function useHasVoted(feedbackId?: number | bigint, userAddress?: `0x${string}`) {
+  return useReadContract({
+    abi: FEEDBACK_MANAGER_ABI,
+    address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+    functionName: "hasVoted",
+    args: typeof feedbackId === "undefined" || !userAddress ? undefined : [feedbackId, userAddress],
+    query: {
+      enabled: typeof feedbackId !== "undefined" && !!userAddress,
+    },
+  });
+}
+
+// ---------- Badge ----------
+
+// Read: Get user's badge tier
+export function useUserTier(userAddress?: `0x${string}`) {
+  return useReadContract({
+    abi: BADGE_NFT_ABI,
+    address: CONTRACT_ADDRESSES.BADGE_NFT,
+    functionName: "getUserTier",
+    args: !userAddress ? undefined : [userAddress],
+    query: {
+      enabled: !!userAddress,
+    },
+  });
+}
+
+// Read: Get user's badges
+export function useUserBadges(userAddress?: `0x${string}`) {
+  return useReadContract({
+    abi: BADGE_NFT_ABI,
+    address: CONTRACT_ADDRESSES.BADGE_NFT,
+    functionName: "getUserBadges",
+    args: !userAddress ? undefined : [userAddress],
+    query: {
+      enabled: !!userAddress,
+    },
+  });
 }

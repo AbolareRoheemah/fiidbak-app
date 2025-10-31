@@ -7,41 +7,17 @@ import { EmptyState } from "@/components/ui/EmptyState"
 import { useParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { useProductStore } from "@/store/useProductStore"
+import toast from "react-hot-toast"
+import { uploadJsonToPinata } from "@/utils/pinata"
 
 // --- Feedback contract hooks ---
 import {
-  useProductFeedbackIds,
-  useFeedback,
-  useWriteFeedback
+  useWriteFeedback,
+  useVoteFeedback,
+  useUserTier
 } from "@/hooks/useContract"
-
-type FeedbackStruct = [
-  productId: number | bigint,      // 0
-  content: string,                 // 1
-  author: string,                  // 2
-  unused?: any,                    // 3
-  positiveVotes?: number | bigint, // 4
-  negativeVotes?: number | bigint, // 5
-  authorTier?: number | bigint,    // 6
-  approved?: boolean,              // 7
-  createdAt?: number | bigint      // 8 (unix timestamp, optional)
-]
-
-// The minimum valid type for normalized feedback
-type Feedback = {
-  id: number | bigint
-  content: string
-  author: string
-  authorTier: number | bigint
-  productId: number | bigint
-  positiveVotes: number | bigint
-  negativeVotes: number | bigint
-  totalVotes: number
-  approved: boolean
-  createdAt?: string
-  hasUserVoted: boolean
-  userVote: null
-}
+import { useProductFeedbacks } from "@/hooks/useProductFeedbacks"
+import { useAccount } from "wagmi"
 
 export default function ProductDetailPage() {
   const { id } = useParams()
@@ -49,7 +25,10 @@ export default function ProductDetailPage() {
   const [showFeedbackForm, setShowFeedbackForm] = useState(false)
   const [newFeedback, setNewFeedback] = useState("")
   const [isFetchingProduct, setIsFetchingProduct] = useState(false)
-  const [feedbackRefreshCount, setFeedbackRefreshCount] = useState(0) // <- NEW STATE
+
+  // Get user account and tier
+  const { address } = useAccount()
+  const { data: userTierData } = useUserTier(address as `0x${string}`)
 
   // Zustand store
   const {
@@ -88,77 +67,14 @@ export default function ProductDetailPage() {
   const n = Number(id)
   const productIdNum = isNaN(n) ? undefined : n
 
-  // --- Fetch feedback ids array for this product
-  const { data: feedbackIdData, isLoading: isLoadingIds, refetch: refetchFeedbackIds } = useProductFeedbackIds(productIdNum)
-  // Ensure feedbackIdData is always an array
-  const feedbackIds: (bigint | number)[] = Array.isArray(feedbackIdData) ? feedbackIdData : []
-
-  // --- Custom fetch of all feedback items --- //
-  const [feedbacksState, setFeedbacksState] = useState<{ isLoading: boolean; items: Feedback[] }>({
-    isLoading: false,
-    items: [],
-  })
-
-  // IMPROVED FEEDBACK RELOAD LOGIC:
-  // Add feedbackRefreshCount to effect dependencies so we can force reload.
-  useEffect(() => {
-    let cancelled = false
-    async function fetchAllFeedbacks() {
-      if (!feedbackIds.length) {
-        setFeedbacksState({ isLoading: false, items: [] })
-        return
-      }
-      setFeedbacksState(prev => ({ ...prev, isLoading: true }))
-      // The following logic is unchanged: call useFeedback for up to LIMIT feedbacks
-      try {
-        const LIMIT = 20
-        if (feedbackIds.length > LIMIT) {
-          setFeedbacksState({ isLoading: false, items: [] })
-          return
-        }
-        let paddedFeedbackIds = [...feedbackIds]
-        if (paddedFeedbackIds.length < LIMIT) {
-          paddedFeedbackIds = [
-            ...paddedFeedbackIds,
-            ...Array(LIMIT - paddedFeedbackIds.length).fill(null)
-          ]
-        }
-        const feedbackResults = paddedFeedbackIds.map(feedbackId =>
-          feedbackId == null ? { data: undefined, isLoading: false } : useFeedback(feedbackId)
-        )
-        const normalized: Feedback[] = []
-        feedbackResults.forEach((f, i) => {
-          if (!feedbackIds[i]) return // only take original ids
-          const d = f?.data as FeedbackStruct | undefined
-          if (!d) return
-          normalized.push({
-            id: feedbackIds[i],
-            content: d[1] ?? "",
-            author: d[2] ?? "",
-            authorTier: (d[6] ?? 1) as number | bigint,
-            productId: d[0],
-            positiveVotes: d[4] ?? 0,
-            negativeVotes: d[5] ?? 0,
-            totalVotes: (Number(d[4] || 0) + Number(d[5] || 0)),
-            approved: d[7] ?? false,
-            createdAt: d[8] ? new Date(Number(d[8]) * 1000).toISOString().substring(0, 10) : undefined,
-            hasUserVoted: false,
-            userVote: null,
-          })
-        })
-        if (!cancelled) setFeedbacksState({ isLoading: false, items: normalized })
-      } catch (err) {
-        if (!cancelled) setFeedbacksState({ isLoading: false, items: [] })
-      }
-    }
-    fetchAllFeedbacks()
-    return () => { cancelled = true }
-    // Use both feedbackIds and feedbackRefreshCount as dependencies
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(Number(feedbackIds)), feedbackRefreshCount])
-
-  // Compose normalized feedback objects for rendering
-  const normalizedFeedbacks: Feedback[] = feedbacksState.items
+  // Use the new hook to fetch all feedbacks for this product
+  const {
+    feedbacks: normalizedFeedbacks,
+    isLoading: isFeedbacksLoading,
+    error: feedbacksError,
+    refetch: refetchFeedbacks,
+    feedbackCount
+  } = useProductFeedbacks(productIdNum)
 
   // Submit feedback hook
   const {
@@ -167,13 +83,17 @@ export default function ProductDetailPage() {
   } = useWriteFeedback(async () => {
     setNewFeedback("")
     setShowFeedbackForm(false)
-    // After successful feedback submission, trigger feedback refresh!
-    // First, try to refetch the feedback IDs from the contract (will update the feedbackIds array)
-    if (typeof refetchFeedbackIds === "function") {
-      await refetchFeedbackIds()
-    }
-    // But in any case also increment local refresh counter to force reload of feedbacks
-    setFeedbackRefreshCount(x => x + 1)
+    // After successful feedback submission, refetch feedbacks
+    await refetchFeedbacks()
+  })
+
+  // Vote on feedback hook
+  const {
+    voteOnFeedback,
+    isVoteLoading
+  } = useVoteFeedback(async () => {
+    // Refresh feedbacks after voting
+    await refetchFeedbacks()
   })
 
   // -------- Util handlers --------
@@ -183,16 +103,56 @@ export default function ProductDetailPage() {
   }
 
   const handleVote = async (feedbackId: number | bigint, isPositive: boolean) => {
-    // TODO: Implement voting logic with smart contract
-    // (probably need a useVoteFeedback/write contract hook)
-    console.log("Voting on feedback:", feedbackId, isPositive)
+    if (!address) {
+      toast.error("Please connect your wallet to vote")
+      return
+    }
+
+    // Check user tier (need at least Wooden badge which is tier 2)
+    const userTier = Number(userTierData || 0)
+    if (userTier < 2) {
+      toast.error("You need at least a Wooden badge (tier 2) to vote on feedback")
+      return
+    }
+
+    await voteOnFeedback(feedbackId, isPositive)
   }
 
   // UseCallback recommended, but not forced, for latest closure
   const handleSubmitFeedback = useCallback(async () => {
     if (!newFeedback.trim() || !selectedProduct) return
-    await giveFeedback(Number(selectedProduct.id), newFeedback)
-  }, [giveFeedback, newFeedback, selectedProduct])
+
+    if (!address) {
+      toast.error("Please connect your wallet to submit feedback")
+      return
+    }
+
+    try {
+      // Upload feedback content to IPFS
+      const metadata = {
+        content: newFeedback,
+        timestamp: new Date().toISOString(),
+        author: address,
+        productId: selectedProduct.id
+      }
+
+      toast.loading("Uploading feedback to IPFS...")
+      const ipfsCid = await uploadJsonToPinata(metadata)
+      toast.dismiss()
+
+      if (!ipfsCid) {
+        toast.error("Failed to upload feedback to IPFS")
+        return
+      }
+
+      // Submit feedback with IPFS hash to contract
+      await giveFeedback(Number(selectedProduct.id), ipfsCid)
+    } catch (error) {
+      toast.dismiss()
+      console.error("Error submitting feedback:", error)
+      toast.error("Failed to submit feedback")
+    }
+  }, [giveFeedback, newFeedback, selectedProduct, address])
 
   if (isFetchingProduct || !selectedProduct) {
     return (
@@ -205,6 +165,7 @@ export default function ProductDetailPage() {
   }
 
   const approvedCount = normalizedFeedbacks.filter(f => !!f && f.approved).length
+  const actualFeedbackCount = feedbackCount
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -232,7 +193,7 @@ export default function ProductDetailPage() {
                       <span>•</span>
                     </>
                   )} */}
-                  <span>{selectedProduct.feedbackCount} reviews</span>
+                  <span>{actualFeedbackCount} reviews</span>
                 </div>
               </div>
 
@@ -335,7 +296,7 @@ export default function ProductDetailPage() {
             )}
 
             {/* Feedback List */}
-            {(isLoadingIds || feedbacksState.isLoading) ? (
+            {isFeedbacksLoading ? (
               <div className="flex justify-center py-8">
                 <LoadingSpinner size="lg" />
               </div>
@@ -372,7 +333,7 @@ export default function ProductDetailPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-white-600">Total Reviews</span>
-                <span className="font-semibold">{selectedProduct.feedbackCount}</span>
+                <span className="font-semibold">{actualFeedbackCount}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-white-600">Approved Reviews</span>

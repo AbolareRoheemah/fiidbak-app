@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
-import { useProductContract } from './useContract'
+import { getAllProducts, useCreateProduct } from './useContract'
+import { uploadJsonToPinata } from '@/utils/pinata'
+import toast from 'react-hot-toast'
 
 export interface Product {
   id: number
@@ -14,53 +16,31 @@ export interface Product {
 }
 
 export function useProducts() {
-  const [products, setProducts] = useState<Product[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  
-  const productContract = useProductContract()
   const { address } = useAccount()
 
-  const fetchProducts = async () => {
-    if (!productContract) return
+  // Fetch products from contract (getting 50 products starting from index 0)
+  const {
+    data: productsData,
+    isLoading,
+    error: fetchError,
+    refetch
+  } = getAllProducts([50, 0])
 
-    setIsLoading(true)
-    setError(null)
+  // Parse product data
+  const products: Product[] = Array.isArray(productsData)
+    ? (productsData as any[]).map((p: any, index) => ({
+        id: Number(p.tokenId || index),
+        name: '', // Will be fetched from IPFS
+        description: '', // Will be fetched from IPFS
+        imageUrl: '', // Will be fetched from IPFS
+        owner: p.owner || '',
+        feedbackCount: Number(p.feedbackCount || 0),
+        createdAt: p.createdAt ? new Date(Number(p.createdAt) * 1000).toISOString().substring(0, 10) : '',
+        ipfsCid: p.ipfsCid || ''
+      }))
+    : []
 
-    try {
-      // TODO: Implement actual contract calls
-      // For now, using mock data
-      const mockProducts: Product[] = [
-        {
-          id: 1,
-          name: "Decentralized Social Media Platform",
-          description: "A blockchain-based social media platform with user ownership and data privacy.",
-          imageUrl: "https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=400",
-          owner: "0x1234...5678",
-          feedbackCount: 23,
-          createdAt: "2024-01-15",
-          ipfsCid: "QmExample1"
-        },
-        {
-          id: 2,
-          name: "NFT Marketplace",
-          description: "Trade and discover unique digital assets in our secure marketplace.",
-          imageUrl: "https://images.unsplash.com/photo-1639322537228-f912d0a4d3d8?w=400",
-          owner: "0x8765...4321",
-          feedbackCount: 45,
-          createdAt: "2024-01-10",
-          ipfsCid: "QmExample2"
-        }
-      ]
-
-      setProducts(mockProducts)
-    } catch (err) {
-      setError('Failed to fetch products')
-      console.error('Error fetching products:', err)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const error = fetchError ? 'Failed to fetch products' : null
 
   const createProduct = async (productData: {
     name: string
@@ -70,44 +50,46 @@ export function useProducts() {
     website?: string
     tags: string[]
   }) => {
-    if (!productContract || !address) {
-      throw new Error('Contract or wallet not available')
+    if (!address) {
+      throw new Error('Wallet not connected')
     }
 
     try {
-      // TODO: Upload metadata to IPFS first
+      // Upload metadata to IPFS
       const metadata = {
         name: productData.name,
         description: productData.description,
         image: productData.imageUrl,
         category: productData.category,
         website: productData.website,
-        tags: productData.tags
+        tags: productData.tags,
+        createdAt: new Date().toISOString(),
+        creator: address
       }
 
-      // TODO: Get IPFS CID after uploading
-      const ipfsCid = "QmExampleNewProduct"
+      toast.loading('Uploading product metadata to IPFS...')
+      const ipfsCid = await uploadJsonToPinata(metadata)
+      toast.dismiss()
 
-      // TODO: Call contract method
-      // await productContract.write.mintProduct([address, 1, ipfsCid])
+      if (!ipfsCid) {
+        throw new Error('Failed to upload product metadata to IPFS')
+      }
 
-      console.log('Product created:', productData)
-      return true
+      // Note: The actual contract call should be done using useCreateProduct hook
+      // This function returns the IPFS CID for the caller to use
+      return ipfsCid
     } catch (err) {
+      toast.dismiss()
       console.error('Error creating product:', err)
       throw err
     }
   }
-
-  useEffect(() => {
-    fetchProducts()
-  }, [productContract])
 
   return {
     products,
     isLoading,
     error,
     createProduct,
-    refetch: fetchProducts
+    refetch
   }
 }

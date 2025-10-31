@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
-import { useFeedbackContract, useBadgeContract } from './useContract'
+import {
+  useAllFeedbacksByRange,
+  useWriteFeedback,
+  useVoteFeedback,
+  useUserTier
+} from './useContract'
+import { uploadJsonToPinata } from '@/utils/pinata'
+import toast from 'react-hot-toast'
 
 export interface Feedback {
   id: number
@@ -19,136 +26,85 @@ export interface Feedback {
 }
 
 export function useFeedback() {
-  const [feedbacks, setFeedbacks] = useState<Feedback[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  
-  const feedbackContract = useFeedbackContract()
-  const badgeContract = useBadgeContract()
   const { address } = useAccount()
 
-  const fetchFeedbacks = async () => {
-    if (!feedbackContract) return
+  // Fetch feedbacks from contract (getting first 20)
+  const {
+    data: feedbackData,
+    isLoading,
+    error: fetchError,
+    refetch
+  } = useAllFeedbacksByRange(0, 20)
 
-    setIsLoading(true)
-    setError(null)
+  // Parse feedback data
+  const feedbacks: Feedback[] = Array.isArray(feedbackData)
+    ? (feedbackData as any[]).map((f: any, index) => ({
+        id: Number(f.feedbackId || index),
+        content: f.feedbackHash || '',
+        author: f.feedbackBy || '',
+        authorTier: 1, // Will need to fetch from badge contract
+        productId: Number(f.productId || 0),
+        positiveVotes: Number(f.positiveVotes || 0),
+        negativeVotes: Number(f.negativeVotes || 0),
+        totalVotes: Number(f.totalVotes || 0),
+        approved: f.approved || false,
+        createdAt: f.timestamp ? new Date(Number(f.timestamp) * 1000).toISOString().substring(0, 10) : '',
+        hasUserVoted: false,
+        userVote: null,
+        ipfsHash: f.feedbackHash || ''
+      }))
+    : []
 
-    try {
-      // TODO: Implement actual contract calls
-      // For now, using mock data
-      const mockFeedbacks: Feedback[] = [
-        {
-          id: 1,
-          content: "This platform has revolutionized how I think about social media. The privacy features are outstanding and the community is incredibly supportive.",
-          author: "0xabcdef1234567890abcdef1234567890abcdef12",
-          authorTier: 3,
-          productId: 1,
-          positiveVotes: 15,
-          negativeVotes: 2,
-          totalVotes: 17,
-          approved: true,
-          createdAt: "2024-01-20",
-          hasUserVoted: false,
-          userVote: null,
-          ipfsHash: "QmFeedback1"
-        },
-        {
-          id: 2,
-          content: "Great concept but the UI needs some work. The onboarding process was a bit confusing for newcomers.",
-          author: "0x9876543210fedcba9876543210fedcba98765432",
-          authorTier: 2,
-          productId: 1,
-          positiveVotes: 8,
-          negativeVotes: 3,
-          totalVotes: 11,
-          approved: true,
-          createdAt: "2024-01-18",
-          hasUserVoted: true,
-          userVote: true,
-          ipfsHash: "QmFeedback2"
-        }
-      ]
+  const error = fetchError ? 'Failed to fetch feedback' : null
 
-      setFeedbacks(mockFeedbacks)
-    } catch (err) {
-      setError('Failed to fetch feedback')
-      console.error('Error fetching feedback:', err)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
+  // Submit feedback - use the hook from useContract
   const submitFeedback = async (productId: number, content: string) => {
-    if (!feedbackContract || !address) {
-      throw new Error('Contract or wallet not available')
+    if (!address) {
+      throw new Error('Wallet not connected')
     }
 
     try {
-      // TODO: Upload feedback content to IPFS first
+      // Upload feedback content to IPFS
       const metadata = {
         content,
         timestamp: new Date().toISOString(),
-        author: address
+        author: address,
+        productId
       }
 
-      // TODO: Get IPFS hash after uploading
-      const ipfsHash = "QmNewFeedback"
+      toast.loading('Uploading feedback to IPFS...')
+      const ipfsCid = await uploadJsonToPinata(metadata)
+      toast.dismiss()
 
-      // TODO: Call contract method
-      // await feedbackContract.write.submitFeedback([productId, ipfsHash])
+      if (!ipfsCid) {
+        throw new Error('Failed to upload feedback to IPFS')
+      }
 
-      console.log('Feedback submitted:', { productId, content })
-      return true
+      // Note: The actual contract call should be done using useWriteFeedback hook
+      // This function is just a helper
+      return ipfsCid
     } catch (err) {
+      toast.dismiss()
       console.error('Error submitting feedback:', err)
       throw err
     }
   }
 
+  // Vote on feedback - use the hook from useContract
   const voteOnFeedback = async (feedbackId: number, isPositive: boolean) => {
-    if (!feedbackContract || !address) {
-      throw new Error('Contract or wallet not available')
+    if (!address) {
+      throw new Error('Wallet not connected')
     }
 
-    try {
-      // TODO: Check user's badge tier before voting
-      const userTier = await badgeContract?.read.getUserTier([address])
-      
-      if (!userTier || userTier < 2) {
-        throw new Error('You need a Wooden badge or higher to vote')
-      }
-
-      // TODO: Call contract method
-      // await feedbackContract.write.voteOnFeedback([feedbackId, isPositive])
-
-      console.log('Voted on feedback:', { feedbackId, isPositive })
-      return true
-    } catch (err) {
-      console.error('Error voting on feedback:', err)
-      throw err
-    }
+    // Note: The actual voting logic with tier checking should be done
+    // using useVoteFeedback and useUserTier hooks
+    // This function is just a helper
+    return { feedbackId, isPositive }
   }
 
-  const getProductFeedbacks = async (productId: number) => {
-    if (!feedbackContract) return []
-
-    try {
-      // TODO: Implement actual contract call
-      // const feedbackIds = await feedbackContract.read.getProductFeedbacks([productId])
-      // const feedbacks = await Promise.all(
-      //   feedbackIds.map(id => feedbackContract.read.getFeedback([id]))
-      // )
-      
-      return feedbacks.filter(f => f.productId === productId)
-    } catch (err) {
-      console.error('Error fetching product feedbacks:', err)
-      return []
-    }
+  const getProductFeedbacks = (productId: number) => {
+    return feedbacks.filter(f => f.productId === productId)
   }
-
-  useEffect(() => {
-    fetchFeedbacks()
-  }, [feedbackContract])
 
   return {
     feedbacks,
@@ -157,6 +113,6 @@ export function useFeedback() {
     submitFeedback,
     voteOnFeedback,
     getProductFeedbacks,
-    refetch: fetchFeedbacks
+    refetch
   }
 }

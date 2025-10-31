@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
-import { useBadgeContract, useFeedbackContract } from './useContract'
+import { useUserTier, useUserBadges } from './useContract'
+import { useReadContract } from 'wagmi'
+import { FEEDBACK_MANAGER_ABI } from '@/lib/feedback_mg_abi'
+import { CONTRACT_ADDRESSES } from '@/lib/contracts'
 
 export interface UserStats {
   badgeTier: number
@@ -12,58 +15,41 @@ export interface UserStats {
 }
 
 export function useUser() {
-  const [userStats, setUserStats] = useState<UserStats | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  
-  const badgeContract = useBadgeContract()
-  const feedbackContract = useFeedbackContract()
   const { address, isConnected } = useAccount()
 
-  const fetchUserStats = async () => {
-    if (!address || !badgeContract || !feedbackContract) return
+  // Fetch user's badge tier
+  const { data: badgeTierData, isLoading: isTierLoading } = useUserTier(address as `0x${string}`)
 
-    setIsLoading(true)
-    setError(null)
+  // Fetch user's badges
+  const { data: userBadgesData, isLoading: isBadgesLoading } = useUserBadges(address as `0x${string}`)
 
-    try {
-      // TODO: Implement actual contract calls
-      // const badgeTier = await badgeContract.read.getUserTier([address])
-      // const userBadges = await badgeContract.read.getUserBadges([address])
-      
-      // Mock data for now
-      const mockStats: UserStats = {
-        badgeTier: 3,
-        totalFeedback: 12,
-        approvedFeedback: 8,
-        totalProducts: 3,
-        totalVotes: 45,
-        reputation: 1250
-      }
-
-      setUserStats(mockStats)
-    } catch (err) {
-      setError('Failed to fetch user stats')
-      console.error('Error fetching user stats:', err)
-    } finally {
-      setIsLoading(false)
+  // Fetch approved feedback count
+  const { data: approvedFeedbackData } = useReadContract({
+    abi: FEEDBACK_MANAGER_ABI,
+    address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+    functionName: 'userApprovedFeedbackCount',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: !!address
     }
-  }
+  })
 
-  const getUserTier = async (userAddress: string) => {
-    if (!badgeContract) return 0
+  const isLoading = isTierLoading || isBadgesLoading
 
-    try {
-      // TODO: Implement actual contract call
-      // const tier = await badgeContract.read.getUserTier([userAddress])
-      // return tier
-      
-      // Mock data for now
-      return 2
-    } catch (err) {
-      console.error('Error fetching user tier:', err)
-      return 0
-    }
+  // Compile user stats
+  const userStats: UserStats | null = isConnected && address ? {
+    badgeTier: Number(badgeTierData || 0),
+    totalFeedback: 0, // Would need to track this separately
+    approvedFeedback: Number(approvedFeedbackData || 0),
+    totalProducts: 0, // Would need to track this separately
+    totalVotes: 0, // Would need to track this separately
+    reputation: Number(approvedFeedbackData || 0) * 10 // Simple calculation
+  } : null
+
+  const getUserTier = (userAddress: string) => {
+    // This is now handled by the useUserTier hook
+    // Keep this function for backwards compatibility
+    return Number(badgeTierData || 0)
   }
 
   const canUserVote = (userTier: number) => {
@@ -72,7 +58,7 @@ export function useUser() {
 
   const getVoteWeight = (userTier: number) => {
     switch (userTier) {
-      case 2: return 1 // Wood
+      case 2: return 1 // Wooden
       case 3: return 2 // Bronze
       case 4: return 3 // Silver
       case 5: return 5 // Gold
@@ -80,21 +66,15 @@ export function useUser() {
     }
   }
 
-  useEffect(() => {
-    if (isConnected && address) {
-      fetchUserStats()
-    } else {
-      setUserStats(null)
-    }
-  }, [isConnected, address, badgeContract, feedbackContract])
-
   return {
     userStats,
     isLoading,
-    error,
+    error: null,
     getUserTier,
     canUserVote,
     getVoteWeight,
-    refetch: fetchUserStats
+    refetch: () => {
+      // Refetch is handled automatically by wagmi hooks
+    }
   }
 }
