@@ -4,7 +4,6 @@ import { readContract } from '@wagmi/core'
 import { config } from '@/app/wagmi'
 import { FEEDBACK_MANAGER_ABI } from '@/lib/feedback_mg_abi'
 import { CONTRACT_ADDRESSES } from '@/lib/contracts'
-import { getUploadedFile } from '@/utils/pinata'
 
 export interface ProductFeedback {
   id: number | bigint
@@ -63,39 +62,11 @@ export function useProductFeedbacks(productId?: number) {
 
             const d = feedbackData as any
 
-            // Fetch content from IPFS if it's a hash
-            let content = d.feedbackHash || ""
-            let actualContent = content
-
-            // Check if content is an IPFS hash
-            if (content && typeof content === 'string' && (content.startsWith('Qm') || content.startsWith('bafy'))) {
-              try {
-                // Try using getUploadedFile first
-                let ipfsUrl = null
-                try {
-                  ipfsUrl = await getUploadedFile(content)
-                } catch (e) {
-                  // Fallback to direct IPFS gateway URL
-                  ipfsUrl = `https://ipfs.io/ipfs/${content}`
-                }
-
-                if (ipfsUrl) {
-                  const res = await fetch(ipfsUrl)
-                  if (res.ok) {
-                    const ipfsData = await res.json()
-
-                    // The IPFS data should have a 'content' field
-                    if (ipfsData.content) {
-                      actualContent = ipfsData.content
-                    } else if (typeof ipfsData === 'string') {
-                      actualContent = ipfsData
-                    }
-                  }
-                }
-              } catch (e) {
-                console.error('Failed to fetch IPFS content for CID:', content, e)
-              }
-            }
+            // Directly use the feedback content as submitted (no IPFS/hash logic)
+            const actualContent =
+              typeof d.feedbackHash === 'string'
+                ? d.feedbackHash
+                : ''
 
             return {
               id: feedbackId,

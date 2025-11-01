@@ -3,7 +3,7 @@ import { ThumbsUp, ThumbsDown, CheckCircle, Clock, User } from 'lucide-react'
 import { BadgeDisplay } from './BadgeDisplay'
 
 interface Feedback {
-  id: number
+  id: number | bigint
   content: string
   author: string
   authorTier: number
@@ -12,14 +12,14 @@ interface Feedback {
   negativeVotes: number
   totalVotes: number
   approved: boolean
-  createdAt: string
+  createdAt?: string
   hasUserVoted: boolean
   userVote: boolean | null
 }
 
 interface FeedbackCardProps {
   feedback: Feedback
-  onVote: (feedbackId: number, isPositive: boolean) => void
+  onVote: (feedbackId: number | bigint, isPositive: boolean) => void
   canVote: boolean
 }
 
@@ -63,7 +63,7 @@ export function FeedbackCard({ feedback, onVote, canVote }: FeedbackCardProps) {
                 <BadgeDisplay tier={feedback.authorTier} />
               </div>
               <div className="flex items-center space-x-2 text-sm text-gray-500">
-                <span>{new Date(feedback.createdAt).toLocaleDateString()}</span>
+                {feedback.createdAt && <span>{new Date(feedback.createdAt).toLocaleDateString()}</span>}
                 {feedback.approved ? (
                   <div className="flex items-center space-x-1 text-success-600">
                     <CheckCircle size={14} />

@@ -341,3 +341,83 @@ export function useUserBadges(userAddress?: `0x${string}`) {
     },
   });
 }
+
+// ---------- Admin Functions ----------
+
+// Read: Check if user has approver role
+export function useIsApprover(userAddress?: `0x${string}`) {
+  // The APPROVER_ROLE is typically a keccak256 hash
+  // We'll need to check hasRole with the correct role hash
+  return useReadContract({
+    abi: FEEDBACK_MANAGER_ABI,
+    address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+    functionName: "hasRole",
+    args: !userAddress ? undefined : [
+      // APPROVER_ROLE - this should match the contract's APPROVER_ROLE constant
+      "0x426c75650000000000000000000000000000000000000000000000000000000000" as `0x${string}`,
+      userAddress
+    ],
+    query: {
+      enabled: !!userAddress,
+    },
+  });
+}
+
+// Write: Approve feedback
+export function useApproveFeedback(onSuccess?: () => void) {
+  const {
+    data: writeData,
+    writeContract,
+    error: writeError,
+    isPending: isApproveLoading,
+  } = useWriteContract();
+  const { isSuccess: isApproveSuccess, error: confirmError } = useWaitForTransactionReceipt({
+    hash: writeData,
+  });
+
+  const approveFeedback = useCallback(
+    async (feedbackId: number | bigint) => {
+      try {
+        // Simulate transaction first
+        await simulateContract(config, {
+          abi: FEEDBACK_MANAGER_ABI,
+          address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+          functionName: "approveFeedback",
+          args: [BigInt(feedbackId)],
+        });
+
+        writeContract({
+          abi: FEEDBACK_MANAGER_ABI,
+          address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+          functionName: "approveFeedback",
+          args: [BigInt(feedbackId)],
+        });
+      } catch (error) {
+        const errorMessage = parseContractError(error);
+        toast.error(errorMessage);
+      }
+    },
+    [writeContract]
+  );
+
+  useEffect(() => {
+    if (isApproveSuccess) {
+      toast.success("Feedback approved successfully!");
+      if (onSuccess) {
+        onSuccess();
+      }
+    }
+    if (writeError || confirmError) {
+      toast.error(parseContractError(writeError || confirmError));
+      console.log("Approve feedback error:", parseContractError(writeError || confirmError));
+    }
+  }, [writeError, confirmError, isApproveSuccess, onSuccess]);
+
+  return {
+    approveFeedback,
+    isApproveLoading,
+    isApproveSuccess,
+    error: writeError || confirmError,
+    hash: writeData,
+  };
+}

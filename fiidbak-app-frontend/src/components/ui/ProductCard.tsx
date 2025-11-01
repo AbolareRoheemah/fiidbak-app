@@ -45,10 +45,10 @@ export function ProductCard({ product }: ProductCardProps) {
           {/* Stats */}
           <div className="flex items-center justify-between text-sm text-gray-500">
             <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-1">
+              {/* <div className="flex items-center space-x-1">
                 <MessageSquare size={14} />
                 <span>{product.feedbackCount} reviews</span>
-              </div>
+              </div> */}
             </div>
             <div className="flex items-center space-x-1">
               <User size={14} />

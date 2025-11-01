@@ -1,43 +1,90 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Shield, Users, Package, MessageSquare, CheckCircle, XCircle, AlertTriangle } from "lucide-react"
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner"
 import { useAccount } from "wagmi"
+import { useIsApprover, useApproveFeedback, useAllFeedbacksByRange, getAllProducts } from "@/hooks/useContract"
+import { readContract } from '@wagmi/core'
+import { config } from '@/app/wagmi'
+import { FEEDBACK_MANAGER_ABI } from '@/lib/feedback_mg_abi'
+import { CONTRACT_ADDRESSES } from '@/lib/contracts'
 
-// Mock data - replace with actual data from contracts
-const mockStats = {
-  totalProducts: 1234,
-  totalFeedback: 5678,
-  totalUsers: 2345,
-  pendingApprovals: 23,
+interface PendingFeedback {
+  id: number | bigint
+  content: string
+  author: string
+  productId: number
+  productName?: string
+  createdAt: string
+  approved: boolean
 }
-
-const mockPendingFeedbacks = [
-  {
-    id: 1,
-    content: "This is a pending feedback that needs approval...",
-    author: "0x1234...5678",
-    productId: 1,
-    productName: "Sample Product",
-    createdAt: "2024-01-20",
-  },
-  {
-    id: 2,
-    content: "Another feedback awaiting moderation...",
-    author: "0x8765...4321",
-    productId: 2,
-    productName: "Another Product",
-    createdAt: "2024-01-19",
-  },
-]
 
 export default function AdminPage() {
   const { address, isConnected } = useAccount()
   const [activeTab, setActiveTab] = useState<"overview" | "moderation" | "users">("overview")
-  const [isLoading] = useState(false)
+  const [pendingFeedbacks, setPendingFeedbacks] = useState<PendingFeedback[]>([])
+  const [isLoadingFeedbacks, setIsLoadingFeedbacks] = useState(false)
+  const [stats, setStats] = useState({
+    totalProducts: 0,
+    totalFeedback: 0,
+    pendingApprovals: 0,
+  })
 
-  // TODO: Check if user has admin role
-  const isAdmin = false // Replace with actual admin check
+  // Check if user has approver role
+  const { data: isApproverData, isLoading: isCheckingApprover } = useIsApprover(address as `0x${string}`)
+  const isAdmin = Boolean(isApproverData)
+  console.log("isApproverData", isApproverData)
+
+  // Get all feedbacks
+  const { data: allFeedbacksData, refetch: refetchFeedbacks } = useAllFeedbacksByRange(0, 100)
+
+  // Get all products for stats
+  const { data: productsData } = getAllProducts([100, 0])
+
+  // Approve feedback hook
+  const { approveFeedback, isApproveLoading } = useApproveFeedback(async () => {
+    // Refetch feedbacks after approval
+    await refetchFeedbacks()
+  })
+
+  // Process feedbacks data
+  useEffect(() => {
+    const processFeedbacks = async () => {
+      if (!allFeedbacksData || !Array.isArray(allFeedbacksData)) return
+
+      setIsLoadingFeedbacks(true)
+      try {
+        const feedbacks = allFeedbacksData as any[]
+        const pending = feedbacks
+          .filter((f: any) => !f.approved)
+          .map((f: any) => ({
+            id: f.feedbackId || 0,
+            content: f.feedbackHash || "",
+            author: f.feedbackBy || "",
+            productId: Number(f.productId || 0),
+            createdAt: f.timestamp
+              ? new Date(Number(f.timestamp) * 1000).toISOString().substring(0, 10)
+              : "",
+            approved: f.approved || false,
+          }))
+
+        setPendingFeedbacks(pending)
+
+        // Update stats
+        setStats({
+          totalProducts: Array.isArray(productsData) ? productsData.length : 0,
+          totalFeedback: feedbacks.length,
+          pendingApprovals: pending.length,
+        })
+      } catch (error) {
+        console.error("Error processing feedbacks:", error)
+      } finally {
+        setIsLoadingFeedbacks(false)
+      }
+    }
+
+    processFeedbacks()
+  }, [allFeedbacksData, productsData])
 
   if (!isConnected) {
     return (
@@ -51,29 +98,39 @@ export default function AdminPage() {
     )
   }
 
-//   if (!isAdmin) {
-//     return (
-//       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-//         <div className="text-center">
-//           <AlertTriangle size={64} className="text-warning-500 mx-auto mb-4" />
-//           <h2 className="text-2xl font-bold text-white-900 mb-2">Access Denied</h2>
-//           <p className="text-gray-600">You don't have permission to access admin features.</p>
-//         </div>
-//       </div>
-//     )
-//   }
-
-  const handleApproveFeedback = async (feedbackId: number) => {
-    // TODO: Implement feedback approval with smart contract
-    console.log("Approving feedback:", feedbackId)
+  if (isCheckingApprover) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex justify-center items-center h-64">
+          <LoadingSpinner size="lg" />
+        </div>
+      </div>
+    )
   }
 
-  const handleRejectFeedback = async (feedbackId: number) => {
-    // TODO: Implement feedback rejection with smart contract
-    console.log("Rejecting feedback:", feedbackId)
+  if (!isAdmin) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="text-center">
+          <AlertTriangle size={64} className="text-warning-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white-900 mb-2">Access Denied</h2>
+          <p className="text-gray-600">You don't have permission to access admin features.</p>
+        </div>
+      </div>
+    )
   }
 
-  if (isLoading) {
+  const handleApproveFeedback = async (feedbackId: number | bigint) => {
+    await approveFeedback(feedbackId)
+  }
+
+  const handleRejectFeedback = async (feedbackId: number | bigint) => {
+    // Note: There's no reject function in the contract, only approve
+    // Rejected feedback simply remains unapproved
+    console.log("Feedback will remain unapproved:", feedbackId)
+  }
+
+  if (isLoadingFeedbacks) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-center items-center h-64">
@@ -95,12 +152,12 @@ export default function AdminPage() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Products</p>
-              <p className="text-2xl font-bold text-white-900">{mockStats.totalProducts}</p>
+              <p className="text-2xl font-bold text-white-900">{stats.totalProducts}</p>
             </div>
             <Package className="text-gray-600" size={24} />
           </div>
@@ -110,7 +167,7 @@ export default function AdminPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Feedback</p>
-              <p className="text-2xl font-bold text-white-900">{mockStats.totalFeedback}</p>
+              <p className="text-2xl font-bold text-white-900">{stats.totalFeedback}</p>
             </div>
             <MessageSquare className="text-success-600" size={24} />
           </div>
@@ -119,18 +176,8 @@ export default function AdminPage() {
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Total Users</p>
-              <p className="text-2xl font-bold text-white-900">{mockStats.totalUsers}</p>
-            </div>
-            <Users className="text-accent-600" size={24} />
-          </div>
-        </div>
-
-        <div className="card">
-          <div className="flex items-center justify-between">
-            <div>
               <p className="text-sm font-medium text-gray-600">Pending Approvals</p>
-              <p className="text-2xl font-bold text-warning-600">{mockStats.pendingApprovals}</p>
+              <p className="text-2xl font-bold text-warning-600">{stats.pendingApprovals}</p>
             </div>
             <AlertTriangle className="text-warning-600" size={24} />
           </div>
@@ -207,13 +254,13 @@ export default function AdminPage() {
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-white-900">Pending Feedback Moderation</h3>
-            <span className="text-sm text-white-500">{mockPendingFeedbacks.length} items</span>
+            <span className="text-sm text-white-500">{pendingFeedbacks.length} items</span>
           </div>
 
-          {mockPendingFeedbacks.length > 0 ? (
+          {pendingFeedbacks.length > 0 ? (
             <div className="space-y-4">
-              {mockPendingFeedbacks.map((feedback) => (
-                <div key={feedback.id} className="card">
+              {pendingFeedbacks.map((feedback) => (
+                <div key={String(feedback.id)} className="card">
                   <div className="space-y-4">
                     <div>
                       <p className="text-white-700">{feedback.content}</p>
@@ -221,8 +268,8 @@ export default function AdminPage() {
 
                     <div className="flex items-center justify-between text-sm text-gray-500">
                       <div className="flex items-center space-x-4">
-                        <span>Author: {feedback.author}</span>
-                        <span>Product: {feedback.productName}</span>
+                        <span>Author: {feedback.author.slice(0, 6)}...{feedback.author.slice(-4)}</span>
+                        <span>Product ID: {feedback.productId}</span>
                         <span>Submitted: {new Date(feedback.createdAt).toLocaleDateString()}</span>
                       </div>
                     </div>
@@ -230,17 +277,19 @@ export default function AdminPage() {
                     <div className="flex space-x-3 pt-4 border-t border-gray-100">
                       <button
                         onClick={() => handleApproveFeedback(feedback.id)}
-                        className="flex items-center space-x-2 btn-primary"
+                        disabled={isApproveLoading}
+                        className="flex items-center space-x-2 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <CheckCircle size={16} />
-                        <span>Approve</span>
+                        <span>{isApproveLoading ? "Approving..." : "Approve"}</span>
                       </button>
                       <button
                         onClick={() => handleRejectFeedback(feedback.id)}
-                        className="flex items-center space-x-2 btn-outline border-red-500 text-red-500 hover:bg-red-50"
+                        disabled={isApproveLoading}
+                        className="flex items-center space-x-2 btn-outline border-red-500 text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <XCircle size={16} />
-                        <span>Reject</span>
+                        <span>Skip</span>
                       </button>
                     </div>
                   </div>
