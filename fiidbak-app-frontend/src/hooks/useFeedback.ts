@@ -1,10 +1,6 @@
-import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
 import {
-  useAllFeedbacksByRange,
-  useWriteFeedback,
-  useVoteFeedback,
-  useUserTier
+  useAllFeedbacksByRange
 } from './useContract'
 import { uploadJsonToPinata } from '@/utils/pinata'
 import toast from 'react-hot-toast'

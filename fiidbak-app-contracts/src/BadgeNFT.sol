@@ -2,12 +2,11 @@
 // Compatible with OpenZeppelin Contracts ^5.4.0
 pragma solidity ^0.8.27;
 
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {ERC1155Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC1155/ERC1155Upgradeable.sol";
-import {ERC1155BurnableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC1155/extensions/ERC1155BurnableUpgradeable.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import {ERC1155Burnable} from "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Burnable.sol";
 
-contract BadgeNFT is Initializable, ERC1155Upgradeable, AccessControlUpgradeable, ERC1155BurnableUpgradeable {
+contract BadgeNFT is ERC1155, AccessControl, ERC1155Burnable {
     bytes32 public constant URI_SETTER_ROLE = keccak256("URI_SETTER_ROLE");
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant VOTER_ROLE = keccak256("VOTER_ROLE");
@@ -18,27 +17,18 @@ contract BadgeNFT is Initializable, ERC1155Upgradeable, AccessControlUpgradeable
     uint256 public constant SILVER = 4;
     uint256 public constant GOLD = 5;
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
-        _disableInitializers();
-    }
-
     // Mapping from user => badgeId => ipfsCid
     mapping(address => mapping(uint256 => string)) private _userBadgeCIDs;
     // Mapping from user => highest tier
     mapping(address => uint256) public userHighestTier;
 
-    // Storage gap for upgradeability
-    uint256[45] private __gap;
-
     event BadgeMinted(address indexed user, uint256 indexed tierId, string ipfsCid);
     event BadgeDeleted(address indexed user, uint256 indexed tierId);
     event URISet(string newUri);
 
-    function initialize(address defaultAdmin, address minter, string memory baseUri) public initializer {
-        __ERC1155_init(baseUri);
-        __AccessControl_init();
-        __ERC1155Burnable_init();
+    constructor(address defaultAdmin, address minter, string memory baseUri) ERC1155(baseUri) {
+        require(defaultAdmin != address(0), "Invalid admin address");
+        require(minter != address(0), "Invalid minter address");
 
         _grantRole(DEFAULT_ADMIN_ROLE, defaultAdmin);
         _grantRole(MINTER_ROLE, minter);
@@ -162,7 +152,7 @@ contract BadgeNFT is Initializable, ERC1155Upgradeable, AccessControlUpgradeable
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(ERC1155Upgradeable, AccessControlUpgradeable)
+        override(ERC1155, AccessControl)
         returns (bool)
     {
         return super.supportsInterface(interfaceId);

@@ -57,7 +57,7 @@ export function FeedbackCard({ feedback, onVote, canVote }: FeedbackCardProps) {
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-medium text-gray-900">
+                <span className="font-medium text-gray-500">
                   {formatAddress(feedback.author)}
                 </span>
                 <BadgeDisplay tier={feedback.authorTier} />

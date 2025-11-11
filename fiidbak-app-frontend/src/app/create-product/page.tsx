@@ -75,7 +75,7 @@ export default function CreateProductPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!formData.name || !formData.description) {
       toast.error('Please fill in all required fields')
       return
@@ -85,10 +85,12 @@ export default function CreateProductPage() {
       return
     }
 
+    console.log('🚀 Creating product with data:', formData)
     setIsLoading(true)
-    
+
     try {
       // 1. Upload product data to IPFS via Pinata
+      console.log('📤 Uploading to IPFS...')
       const ipfsPayload: Record<string, any> = {
         name: formData.name,
         description: formData.description,
@@ -97,17 +99,24 @@ export default function CreateProductPage() {
         tags: formData.tags,
         image: formData.image
       }
-      // If image is present, include it in the upload
+
       let ipfsCid: string
       ipfsCid = await uploadJsonToPinata(ipfsPayload)
+      console.log('✅ IPFS Upload successful, CID:', ipfsCid)
 
       // 2. Call the contract to mint the product NFT
+      console.log('📝 Calling contract with:', {
+        owner: address,
+        amount: 1,
+        ipfsCid
+      })
       await createProduct(address as `0x${string}`, 1, ipfsCid)
-      // Success toast will be handled by the hook, but we can optimistically route
-      // router.push('/products')
-    } catch (error) {
-      toast.error('Failed to create product. Please try again.')
-      console.error('Error creating product:', error)
+      console.log('✅ Contract call initiated')
+      // Success toast will be handled by the hook
+    } catch (error: any) {
+      const errorMessage = error?.message || 'Failed to create product. Please try again.'
+      toast.error(errorMessage)
+      console.error('❌ Error creating product:', error)
     } finally {
       setIsLoading(false)
     }

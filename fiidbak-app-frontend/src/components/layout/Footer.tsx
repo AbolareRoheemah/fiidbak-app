@@ -10,24 +10,25 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Brand */}
           <div className="col-span-1 md:col-span-2">
-            <Link href="/" className="flex items-center space-x-2 mb-4">
-              <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">F</span>
-              </div>
-              <span className="text-xl font-bold">Fiidbak</span>
-            </Link>
+          <Link href="/" className="flex items-center space-x-2 mb-0 sm:mb-0">
+            <div className="w-10 h-10 bg-gradient-primary rounded-lg flex items-center justify-center">
+            <img src="/logo.jpeg" alt="" className="w-10 h-10" />
+            </div>
+            <span className="text-xl font-bold">Fiidbak</span>
+            
+          </Link>
             <p className="text-gray-400 mb-6 max-w-md">
               A decentralized platform for authentic product feedback and community-driven reviews. 
               Built on blockchain technology to ensure transparency and trust.
             </p>
             <div className="flex space-x-4">
-              <a href="#" className="text-gray-400 hover:text-white transition-colors">
+              <a href="https://x.com/_fiidbak?s=11" className="text-gray-400 hover:text-white transition-colors">
                 <Twitter size={20} />
               </a>
-              <a href="#" className="text-gray-400 hover:text-white transition-colors">
+              <a href="https://github.com/AbolareRoheemah/fiidbak-app" className="text-gray-400 hover:text-white transition-colors">
                 <Github size={20} />
               </a>
-              <a href="#" className="text-gray-400 hover:text-white transition-colors">
+              <a href="mailto:roheemahabo@gmail.com" className="text-gray-400 hover:text-white transition-colors">
                 <Mail size={20} />
               </a>
             </div>

@@ -9,21 +9,76 @@ import { CONTRACT_ADDRESSES } from "@/lib/contracts";
 import { toast } from 'react-hot-toast';
 import { BaseError, ContractFunctionRevertedError } from "viem";
 
-// Custom error types
-export enum ContractError {
-  CoolDownTimeTooSmall = 'Cooldown time cannot be set to less than 30sec',
-  TokenLimitExceeded = 'You cant get more than 10WAG tokens at a time'
-}
-
 // ---------- Product ----------
 
 // Read: Get all products
-export function getAllProducts(args: [number, number] = [10, 0]) {
+export function useGetAllProducts(args: [bigint, bigint] = [BigInt(10), BigInt(0)]) {
   return useReadContract({
     abi: PRODUCT_NFT_ABI,
     address: CONTRACT_ADDRESSES.PRODUCT_NFT,
     functionName: "getAllProducts",
     args,
+  });
+}
+
+// Read: Get owner's products
+export function useGetOwnerProducts(ownerAddress?: `0x${string}`, productCount: number | bigint = 50, startIndex: number | bigint = 0) {
+  return useReadContract({
+    abi: PRODUCT_NFT_ABI,
+    address: CONTRACT_ADDRESSES.PRODUCT_NFT,
+    functionName: "getOwnerProducts",
+    args: !ownerAddress ? undefined : [ownerAddress, BigInt(productCount), BigInt(startIndex)],
+    query: {
+      enabled: !!ownerAddress,
+    },
+  });
+}
+
+// Read: Get single product
+export function useGetProduct(productId?: number | bigint) {
+  return useReadContract({
+    abi: PRODUCT_NFT_ABI,
+    address: CONTRACT_ADDRESSES.PRODUCT_NFT,
+    functionName: "getProduct",
+    args: typeof productId === "undefined" ? undefined : [BigInt(productId)],
+    query: {
+      enabled: typeof productId !== "undefined",
+    },
+  });
+}
+
+// Read: Get product with feedback count
+export function useGetProductWithFeedbackCount(productId?: number | bigint) {
+  return useReadContract({
+    abi: PRODUCT_NFT_ABI,
+    address: CONTRACT_ADDRESSES.PRODUCT_NFT,
+    functionName: "getProductWithFeedbackCount",
+    args: typeof productId === "undefined" ? undefined : [BigInt(productId)],
+    query: {
+      enabled: typeof productId !== "undefined",
+    },
+  });
+}
+
+// Read: Get total products count
+export function useGetTotalProducts() {
+  return useReadContract({
+    abi: PRODUCT_NFT_ABI,
+    address: CONTRACT_ADDRESSES.PRODUCT_NFT,
+    functionName: "getTotalProducts",
+  });
+}
+
+// Read: Check if product exists
+export function useProductExists(productId?: number | bigint) {
+  return useReadContract({
+    abi: PRODUCT_NFT_ABI,
+    address: CONTRACT_ADDRESSES.PRODUCT_NFT,
+    functionName: "productExists",
+    args: typeof productId === "undefined" ? undefined : [BigInt(productId)],
+    query: {
+      enabled: typeof productId !== "undefined",
+    },
   });
 }
 
@@ -97,7 +152,7 @@ export function useProductFeedbackIds(productId?: number | bigint) {
     abi: FEEDBACK_MANAGER_ABI,
     address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
     functionName: "getProductFeedbacks",
-    args: typeof productId === "undefined" ? undefined : [productId],
+    args: typeof productId === "undefined" ? undefined : [BigInt(productId)],
     query: {
       enabled: typeof productId !== "undefined",
     },
@@ -110,7 +165,7 @@ export function useFeedback(feedbackId?: number | bigint) {
     abi: FEEDBACK_MANAGER_ABI,
     address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
     functionName: "getFeedback",
-    args: typeof feedbackId === "undefined" ? undefined : [feedbackId],
+    args: typeof feedbackId === "undefined" ? undefined : [BigInt(feedbackId)],
     query: {
       enabled: typeof feedbackId !== "undefined",
     },
@@ -307,7 +362,7 @@ export function useHasVoted(feedbackId?: number | bigint, userAddress?: `0x${str
     abi: FEEDBACK_MANAGER_ABI,
     address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
     functionName: "hasVoted",
-    args: typeof feedbackId === "undefined" || !userAddress ? undefined : [feedbackId, userAddress],
+    args: typeof feedbackId === "undefined" || !userAddress ? undefined : [BigInt(feedbackId), userAddress],
     query: {
       enabled: typeof feedbackId !== "undefined" && !!userAddress,
     },
@@ -344,21 +399,31 @@ export function useUserBadges(userAddress?: `0x${string}`) {
 
 // ---------- Admin Functions ----------
 
-// Read: Check if user has approver role
+// Read: Get the APPROVER_ROLE from contract
+export function useApproverRole() {
+  return useReadContract({
+    abi: FEEDBACK_MANAGER_ABI,
+    address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+    functionName: "APPROVER_ROLE",
+    // No args required
+  });
+}
+
+// Read: Check if user has approver role using the contract getter
 export function useIsApprover(userAddress?: `0x${string}`) {
-  // The APPROVER_ROLE is typically a keccak256 hash
-  // We'll need to check hasRole with the correct role hash
+  // Get the APPROVER_ROLE dynamically
+  const { data: approverRole } = useApproverRole();
+
   return useReadContract({
     abi: FEEDBACK_MANAGER_ABI,
     address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
     functionName: "hasRole",
-    args: !userAddress ? undefined : [
-      // APPROVER_ROLE - this should match the contract's APPROVER_ROLE constant
-      "0x426c75650000000000000000000000000000000000000000000000000000000000" as `0x${string}`,
+    args: !userAddress || !approverRole ? undefined : [
+      approverRole as `0x${string}`,
       userAddress
     ],
     query: {
-      enabled: !!userAddress,
+      enabled: !!userAddress && !!approverRole,
     },
   });
 }
@@ -379,12 +444,12 @@ export function useApproveFeedback(onSuccess?: () => void) {
     async (feedbackId: number | bigint) => {
       try {
         // Simulate transaction first
-        await simulateContract(config, {
-          abi: FEEDBACK_MANAGER_ABI,
-          address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
-          functionName: "approveFeedback",
-          args: [BigInt(feedbackId)],
-        });
+        // await simulateContract(config, {
+        //   abi: FEEDBACK_MANAGER_ABI,
+        //   address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+        //   functionName: "approveFeedback",
+        //   args: [BigInt(feedbackId)],
+        // });
 
         writeContract({
           abi: FEEDBACK_MANAGER_ABI,

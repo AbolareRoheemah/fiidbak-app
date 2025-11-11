@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
 import { useUserTier, useUserBadges } from './useContract'
 import { useReadContract } from 'wagmi'
 import { FEEDBACK_MANAGER_ABI } from '@/lib/feedback_mg_abi'
 import { CONTRACT_ADDRESSES } from '@/lib/contracts'
+import { useUserProducts } from './useUserProducts'
+import { useUserFeedbacks } from './useUserFeedbacks'
 
 export interface UserStats {
   badgeTier: number
@@ -21,7 +22,7 @@ export function useUser() {
   const { data: badgeTierData, isLoading: isTierLoading } = useUserTier(address as `0x${string}`)
 
   // Fetch user's badges
-  const { data: userBadgesData, isLoading: isBadgesLoading } = useUserBadges(address as `0x${string}`)
+  const { isLoading: isBadgesLoading } = useUserBadges(address as `0x${string}`)
 
   // Fetch approved feedback count
   const { data: approvedFeedbackData } = useReadContract({
@@ -34,19 +35,28 @@ export function useUser() {
     }
   })
 
-  const isLoading = isTierLoading || isBadgesLoading
+  // Fetch user's products
+  const { products: userProducts, isLoading: isProductsLoading } = useUserProducts()
+
+  // Fetch user's feedbacks
+  const { feedbacks: userFeedbacks, isLoading: isFeedbacksLoading } = useUserFeedbacks()
+
+  const isLoading = isTierLoading || isBadgesLoading || isProductsLoading || isFeedbacksLoading
+
+  // Calculate total votes cast (sum of all votes on user's feedbacks)
+  const totalVotes = userFeedbacks.reduce((sum, feedback) => sum + feedback.totalVotes, 0)
 
   // Compile user stats
   const userStats: UserStats | null = isConnected && address ? {
     badgeTier: Number(badgeTierData || 0),
-    totalFeedback: 0, // Would need to track this separately
+    totalFeedback: userFeedbacks.length,
     approvedFeedback: Number(approvedFeedbackData || 0),
-    totalProducts: 0, // Would need to track this separately
-    totalVotes: 0, // Would need to track this separately
+    totalProducts: userProducts.length,
+    totalVotes: totalVotes,
     reputation: Number(approvedFeedbackData || 0) * 10 // Simple calculation
   } : null
 
-  const getUserTier = (userAddress: string) => {
+  const getUserTier = () => {
     // This is now handled by the useUserTier hook
     // Keep this function for backwards compatibility
     return Number(badgeTierData || 0)
@@ -73,6 +83,8 @@ export function useUser() {
     getUserTier,
     canUserVote,
     getVoteWeight,
+    userProducts,
+    userFeedbacks,
     refetch: () => {
       // Refetch is handled automatically by wagmi hooks
     }

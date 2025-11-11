@@ -1,18 +1,20 @@
 "use client"
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { Search, Filter, Plus, ChevronLeft, ChevronRight } from "lucide-react"
 import { ProductCard } from "@/components/ui/ProductCard"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner"
-import { getAllProducts } from "@/hooks/useContract"
+import { useGetAllProducts } from "@/hooks/useContract"
 import { getUploadedFile } from "@/utils/pinata"
 import { useRouter } from "next/navigation"
 import { useProductStore, Product } from "@/store/useProductStore"
 
 type ContractProduct = {
-  product_id: string | number
-  product_owner: string
-  ipfs_cid: string
+  productId: bigint
+  owner: `0x${string}`
+  ipfsCid: string
+  createdAt: bigint
+  exists: boolean
 }
 
 const PAGE_SIZE = 9
@@ -24,11 +26,12 @@ export default function ProductsPage() {
   const [loadingIpfs, setLoadingIpfs] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const router = useRouter()
+  const hasFetchedRef = useRef(false)
 
   // Zustand store
-  const { 
-    products, 
-    setProducts, 
+  const {
+    products,
+    setProducts,
     isLoading: storeLoading,
     error: storeError,
     setIsLoading: setStoreLoading,
@@ -38,20 +41,42 @@ export default function ProductsPage() {
   } = useProductStore()
 
   // Fetch all products from contract
-  const { 
-    data: productsRaw = [], 
-    isLoading: contractLoading, 
-    isError, 
-    error: fetchError 
-  } = getAllProducts([FETCH_ALL_LIMIT, 0])
+  const {
+    data: productsRaw = [],
+    isLoading: contractLoading,
+    isError,
+    error: fetchError
+  } = useGetAllProducts([BigInt(FETCH_ALL_LIMIT), BigInt(0)])
 
   // Fetch product details from IPFS and save to Zustand store
   useEffect(() => {
     let ignore = false
 
     async function fetchProducts() {
-      // Skip if we have cached products and shouldn't refetch
-      if (hasProducts() && !shouldRefetch()) {
+      // Check inside useEffect to avoid calling on every render
+      const hasProductsValue = hasProducts()
+      const shouldRefetchValue = shouldRefetch()
+
+      // Skip if already fetched and not asked to refetch
+      if (hasFetchedRef.current && hasProductsValue && !shouldRefetchValue) {
+        return
+      }
+
+      // Skip if contract is still loading
+      if (contractLoading) {
+        return
+      }
+
+      // Handle empty products from contract (this is valid, not an error!)
+      if (!productsRaw || productsRaw.length === 0) {
+        if (!contractLoading) {
+          // Contract loaded but returned empty - set empty products (no error!)
+          setProducts([])
+          setStoreError(null) // Clear any previous errors
+          hasFetchedRef.current = true
+          setLoadingIpfs(false)
+          setStoreLoading(false)
+        }
         return
       }
 
@@ -60,29 +85,33 @@ export default function ProductsPage() {
       setStoreError(null)
 
       try {
-        if (!productsRaw || !Array.isArray(productsRaw)) {
+        // Remove default/empty product
+        const filteredRaw: ContractProduct[] = productsRaw.filter(
+          (p: any) =>
+            p &&
+            p.productId &&
+            Number(p.productId) !== 0 &&
+            p.ipfsCid &&
+            typeof p.ipfsCid === "string" &&
+            p.ipfsCid.length > 0 &&
+            p.exists === true
+        )
+
+        // If no valid products after filtering, set empty array (not an error!)
+        if (filteredRaw.length === 0) {
           setProducts([])
+          setStoreError(null)
+          hasFetchedRef.current = true
           setLoadingIpfs(false)
           setStoreLoading(false)
           return
         }
 
-        // Remove default/empty product
-        const filteredRaw: ContractProduct[] = productsRaw.filter(
-          (p: any) =>
-            p &&
-            p.product_id &&
-            Number(p.product_id) !== 0 &&
-            p.ipfs_cid &&
-            typeof p.ipfs_cid === "string" &&
-            p.ipfs_cid.length > 0
-        )
-
         // Fetch IPFS data for each product
         const productPromises = filteredRaw.map(async (p) => {
           let ipfsData: any = {}
           try {
-            const url = await getUploadedFile(p.ipfs_cid)
+            const url = await getUploadedFile(p.ipfsCid)
             if (url) {
               const res = await fetch(url)
               if (res.ok) {
@@ -93,13 +122,13 @@ export default function ProductsPage() {
             ipfsData = {}
           }
           return {
-            id: Number(p.product_id),
+            id: Number(p.productId),
             name: ipfsData.name ?? "Unnamed Product",
             description: ipfsData.description ?? "No description available.",
             imageUrl: ipfsData.image ?? ipfsData.imageUrl ?? "https://placehold.co/400x300?text=No+Image",
-            owner: p.product_owner ?? "",
+            owner: p.owner ?? "",
             feedbackCount: ipfsData.feedbackCount ? Number(ipfsData.feedbackCount) : 0,
-            createdAt: ipfsData.createdAt ?? new Date().toISOString(),
+            createdAt: ipfsData.createdAt ?? new Date(Number(p.createdAt) * 1000).toISOString(),
             category: ipfsData.category,
             website: ipfsData.website,
             tags: ipfsData.tags ?? []
@@ -109,14 +138,14 @@ export default function ProductsPage() {
         const productsArr = await Promise.all(productPromises)
         // Sort by id descending (latest first)
         productsArr.sort((a, b) => b.id - a.id)
-        
+
         if (!ignore) {
-          // Save to Zustand store
           setProducts(productsArr)
+          hasFetchedRef.current = true
         }
       } catch (err) {
-        const errorMsg = "Failed to process product data."
-        setStoreError(errorMsg)
+        console.error('Error fetching products:', err)
+        setStoreError("Failed to process product data.")
       } finally {
         if (!ignore) {
           setLoadingIpfs(false)
@@ -126,11 +155,12 @@ export default function ProductsPage() {
     }
 
     fetchProducts()
-
     return () => {
       ignore = true
     }
-  }, [productsRaw, hasProducts, shouldRefetch, setProducts, setStoreLoading, setStoreError])
+    // Only depend on contractLoading state change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractLoading])
 
   // Filter and sort products
   const filteredProducts = useMemo(() => {
@@ -182,8 +212,19 @@ export default function ProductsPage() {
     setCurrentPage((prev) => Math.min(prev + 1, totalPages))
   }, [totalPages])
 
-  // Error handling
-  if (isError || storeError || fetchError) {
+  // Loading state (check this first)
+  if (contractLoading || loadingIpfs || storeLoading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex justify-center items-center h-64">
+          <LoadingSpinner size="lg" />
+        </div>
+      </div>
+    )
+  }
+
+  // Error handling - only show if there's an actual error AND we don't have cached products
+  if ((isError || fetchError) && products.length === 0) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <EmptyState
@@ -199,18 +240,24 @@ export default function ProductsPage() {
     )
   }
 
-  // Loading state
-  if (contractLoading || loadingIpfs || storeLoading) {
+  // Store error (IPFS processing error) - only if we don't have products
+  if (storeError && products.length === 0) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex justify-center items-center h-64">
-          <LoadingSpinner size="lg" />
-        </div>
+        <EmptyState
+          icon="products"
+          title="Error processing products"
+          description={storeError}
+          action={{
+            label: "Retry",
+            onClick: () => window.location.reload(),
+          }}
+        />
       </div>
     )
   }
 
-  // No products
+  // No products (empty state - this is GOOD, not an error!)
   if (products.length === 0 && !searchTerm) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -266,8 +313,8 @@ export default function ProductsPage() {
             </select>
           </div>
 
-          <button 
-            className="btn-primary flex items-center space-x-2 cursor-pointer" 
+          <button
+            className="btn-primary flex items-center space-x-2 cursor-pointer"
             onClick={() => router.push("/create-product")}
           >
             <Plus size={20} />

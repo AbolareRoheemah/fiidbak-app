@@ -1,122 +1,179 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect, useMemo } from "react"
+import { useAccount } from "wagmi"
 import { Search, Filter, ThumbsUp, ThumbsDown, CheckCircle, Clock } from "lucide-react"
 import { FeedbackCard } from "@/components/ui/FeedbackCard"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner"
+import { useAllFeedbacksByRange, useVoteFeedback, useUserTier, useHasVoted } from "@/hooks/useContract"
+import { getUploadedFile } from "@/utils/pinata"
 
-// Mock data - replace with actual data from contracts
-const mockFeedbacks = [
-  {
-    id: 1,
-    content:
-      "This platform has revolutionized how I think about social media. The privacy features are outstanding and the community is incredibly supportive. The tokenomics are well thought out and I can actually earn from my content!",
-    author: "0xabcdef1234567890abcdef1234567890abcdef12",
-    authorTier: 3,
-    productId: 1,
-    positiveVotes: 15,
-    negativeVotes: 2,
-    totalVotes: 17,
-    approved: true,
-    createdAt: "2024-01-20",
-    hasUserVoted: false,
-    userVote: null,
-  },
-  {
-    id: 2,
-    content:
-      "Great concept but the UI needs some work. The onboarding process was a bit confusing for newcomers. However, the core functionality works well and the team is responsive to feedback.",
-    author: "0x9876543210fedcba9876543210fedcba98765432",
-    authorTier: 2,
-    productId: 1,
-    positiveVotes: 8,
-    negativeVotes: 3,
-    totalVotes: 11,
-    approved: true,
-    createdAt: "2024-01-18",
-    hasUserVoted: true,
-    userVote: true,
-  },
-  {
-    id: 3,
-    content:
-      "The gas fees are quite high during peak times, which makes it expensive to post content. The platform is good but needs better scaling solutions.",
-    author: "0xfedcba0987654321fedcba0987654321fedcba09",
-    authorTier: 4,
-    productId: 1,
-    positiveVotes: 5,
-    negativeVotes: 8,
-    totalVotes: 13,
-    approved: false,
-    createdAt: "2024-01-16",
-    hasUserVoted: false,
-    userVote: null,
-  },
-  {
-    id: 4,
-    content:
-      "Amazing user experience! The interface is intuitive and the features are exactly what I needed. The community is very helpful and the documentation is comprehensive.",
-    author: "0x1234567890abcdef1234567890abcdef12345678",
-    authorTier: 5,
-    productId: 2,
-    positiveVotes: 22,
-    negativeVotes: 1,
-    totalVotes: 23,
-    approved: true,
-    createdAt: "2024-01-22",
-    hasUserVoted: false,
-    userVote: null,
-  },
-  {
-    id: 5,
-    content:
-      "Good platform overall, but there are some bugs that need fixing. Customer support is slow to respond, but the core functionality works as expected.",
-    author: "0x567890abcdef1234567890abcdef1234567890ab",
-    authorTier: 2,
-    productId: 3,
-    positiveVotes: 6,
-    negativeVotes: 4,
-    totalVotes: 10,
-    approved: true,
-    createdAt: "2024-01-19",
-    hasUserVoted: true,
-    userVote: false,
-  },
-]
+interface ContractFeedback {
+  feedbackId: bigint | number
+  feedbackBy: string
+  productId: bigint | number
+  positiveVotes: bigint | number
+  negativeVotes: bigint | number
+  totalVotes: bigint | number
+  approved: boolean
+  timestamp: bigint | number
+  feedbackHash: string
+}
+
+interface Feedback {
+  id: number
+  content: string
+  author: string
+  authorTier: number
+  productId: number
+  positiveVotes: number
+  negativeVotes: number
+  totalVotes: number
+  approved: boolean
+  createdAt: string
+  hasUserVoted: boolean
+  userVote: boolean | null
+  ipfsHash: string
+}
 
 export default function FeedbackPage() {
+  const { address } = useAccount()
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "approved" | "pending">("all")
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "mostVotes">("newest")
-  const [isLoading] = useState(false)
+  const [feedbacks, setFeedbacks] = useState<Feedback[]>([])
+  const [isFetchingIPFS, setIsFetchingIPFS] = useState(false)
 
-  const filteredFeedbacks = mockFeedbacks.filter((feedback) => {
-    const matchesSearch = feedback.content.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus =
-      statusFilter === "all" ||
-      (statusFilter === "approved" && feedback.approved) ||
-      (statusFilter === "pending" && !feedback.approved)
+  // Fetch feedbacks from contract (getting 100 feedbacks)
+  const {
+    data: feedbacksData,
+    isLoading: isContractLoading,
+    error: fetchError,
+    refetch
+  } = useAllFeedbacksByRange(0, 100)
 
-    return matchesSearch && matchesStatus
+  // Get user's badge tier
+  const { data: userTierData } = useUserTier(address as `0x${string}`)
+  const userTier = Number(userTierData || 0)
+
+  // Voting hook
+  const { voteOnFeedback, isVoteLoading } = useVoteFeedback(() => {
+    // Refetch feedbacks after voting
+    refetch()
   })
 
-  const sortedFeedbacks = [...filteredFeedbacks].sort((a, b) => {
-    switch (sortBy) {
-      case "newest":
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      case "oldest":
-        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      case "mostVotes":
-        return b.totalVotes - a.totalVotes
-      default:
-        return 0
+  // Fetch IPFS data for feedbacks
+  useEffect(() => {
+    let ignore = false
+
+    async function fetchIPFSData() {
+      if (!feedbacksData || !Array.isArray(feedbacksData) || feedbacksData.length === 0) {
+        setFeedbacks([])
+        return
+      }
+
+      setIsFetchingIPFS(true)
+
+      const contractFeedbacks = feedbacksData as ContractFeedback[]
+      const feedbacksWithIPFS = await Promise.all(
+        contractFeedbacks.map(async (f) => {
+          let ipfsData: { content?: string } = {}
+          try {
+            const url = await getUploadedFile(f.feedbackHash)
+            if (url) {
+              const res = await fetch(url)
+              if (res.ok) {
+                ipfsData = await res.json()
+              }
+            }
+          } catch (e) {
+            console.error(`Failed to fetch IPFS data for feedback ${f.feedbackId}:`, e)
+            ipfsData = {}
+          }
+
+          return {
+            id: Number(f.feedbackId),
+            content: ipfsData.content || f.feedbackHash,
+            author: f.feedbackBy,
+            authorTier: 1, // Could fetch from badge contract if needed
+            productId: Number(f.productId),
+            positiveVotes: Number(f.positiveVotes),
+            negativeVotes: Number(f.negativeVotes),
+            totalVotes: Number(f.totalVotes),
+            approved: f.approved,
+            createdAt: f.timestamp ? new Date(Number(f.timestamp) * 1000).toISOString().substring(0, 10) : '',
+            hasUserVoted: false, // Will be updated per user
+            userVote: null,
+            ipfsHash: f.feedbackHash
+          }
+        })
+      )
+
+      if (!ignore) {
+        setFeedbacks(feedbacksWithIPFS)
+        setIsFetchingIPFS(false)
+      }
     }
-  })
+
+    fetchIPFSData()
+
+    return () => {
+      ignore = true
+    }
+  }, [feedbacksData])
+
+  const isLoading = isContractLoading || isFetchingIPFS
+
+  // Filter and sort feedbacks using useMemo for performance
+  const filteredFeedbacks = useMemo(() => {
+    return feedbacks.filter((feedback) => {
+      const matchesSearch = feedback.content.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "approved" && feedback.approved) ||
+        (statusFilter === "pending" && !feedback.approved)
+
+      return matchesSearch && matchesStatus
+    })
+  }, [feedbacks, searchTerm, statusFilter])
+
+  const sortedFeedbacks = useMemo(() => {
+    return [...filteredFeedbacks].sort((a, b) => {
+      switch (sortBy) {
+        case "newest":
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        case "oldest":
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        case "mostVotes":
+          return b.totalVotes - a.totalVotes
+        default:
+          return 0
+      }
+    })
+  }, [filteredFeedbacks, sortBy])
 
   const handleVote = async (feedbackId: number, isPositive: boolean) => {
-    // TODO: Implement voting logic with smart contract
-    console.log("Voting on feedback:", feedbackId, isPositive)
+    if (!address) {
+      alert("Please connect your wallet to vote")
+      return
+    }
+
+    if (userTier < 2) {
+      alert("You need at least a Wooden badge (tier 2) to vote on feedback")
+      return
+    }
+
+    await voteOnFeedback(feedbackId, isPositive)
   }
+
+  // Check if user can vote
+  const canVote = address && userTier >= 2
+
+  // Calculate stats
+  const totalFeedbacks = feedbacks.length
+  const approvedCount = feedbacks.filter(f => f.approved).length
+  const pendingCount = feedbacks.filter(f => !f.approved).length
+  const totalVotesCount = feedbacks.reduce((sum, f) => sum + f.totalVotes, 0)
 
   if (isLoading) {
     return (
@@ -158,7 +215,7 @@ export default function FeedbackPage() {
             <Filter size={20} className="text-gray-400" />
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
+              onChange={(e) => setStatusFilter(e.target.value as "all" | "approved" | "pending")}
               className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="all">All Status</option>
@@ -169,7 +226,7 @@ export default function FeedbackPage() {
 
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
+            onChange={(e) => setSortBy(e.target.value as "newest" | "oldest" | "mostVotes")}
             className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
           >
             <option value="newest">Newest</option>
@@ -185,7 +242,7 @@ export default function FeedbackPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Feedback</p>
-              <p className="text-2xl font-bold text-gray-900">{mockFeedbacks.length}</p>
+              <p className="text-2xl font-bold text-gray-900">{totalFeedbacks}</p>
             </div>
             <ThumbsUp className="text-primary-600" size={24} />
           </div>
@@ -195,7 +252,7 @@ export default function FeedbackPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Approved</p>
-              <p className="text-2xl font-bold text-success-600">{mockFeedbacks.filter((f) => f.approved).length}</p>
+              <p className="text-2xl font-bold text-success-600">{approvedCount}</p>
             </div>
             <CheckCircle className="text-success-600" size={24} />
           </div>
@@ -205,7 +262,7 @@ export default function FeedbackPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Pending</p>
-              <p className="text-2xl font-bold text-warning-600">{mockFeedbacks.filter((f) => !f.approved).length}</p>
+              <p className="text-2xl font-bold text-warning-600">{pendingCount}</p>
             </div>
             <Clock className="text-warning-600" size={24} />
           </div>
@@ -215,9 +272,7 @@ export default function FeedbackPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Votes</p>
-              <p className="text-2xl font-bold text-gray-900">
-                {mockFeedbacks.reduce((sum, f) => sum + f.totalVotes, 0)}
-              </p>
+              <p className="text-2xl font-bold text-gray-900">{totalVotesCount}</p>
             </div>
             <ThumbsDown className="text-gray-600" size={24} />
           </div>
@@ -227,7 +282,7 @@ export default function FeedbackPage() {
       {/* Results Count */}
       <div className="mb-6">
         <p className="text-gray-600">
-          Showing {sortedFeedbacks.length} of {mockFeedbacks.length} feedback entries
+          Showing {sortedFeedbacks.length} of {totalFeedbacks} feedback entries
         </p>
       </div>
 
@@ -239,19 +294,12 @@ export default function FeedbackPage() {
               key={feedback.id}
               feedback={feedback}
               onVote={handleVote}
-              canVote={true} // TODO: Check user's badge tier
+              canVote={canVote || false}
             />
           ))}
         </div>
       ) : (
         <EmptyState icon="search" title="No feedback found" description="Try adjusting your search terms or filters." />
-      )}
-
-      {/* Load More */}
-      {sortedFeedbacks.length > 0 && (
-        <div className="text-center mt-12">
-          <button className="btn-outline">Load More Feedback</button>
-        </div>
       )}
     </div>
   )

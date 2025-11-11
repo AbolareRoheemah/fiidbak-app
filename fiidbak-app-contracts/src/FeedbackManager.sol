@@ -37,22 +37,27 @@ contract FeedbackManager is AccessControl {
     event FeedbackVoted(uint256 indexed feedbackId, address indexed voter, bool isPositive, uint256 weight);
     event FeedbackApproved(uint256 indexed feedbackId, address indexed approver);
     event BadgeContractSet(address indexed badgeContract);
+    event ProductNFTContractSet(address indexed productNFTContract);
 
     uint256 private _nextFeedbackId = 1;
     address public badgeContract;
+    address public productNFTContract;
     mapping(uint256 => Feedback) public feedbacks;
     mapping(uint256 => Vote[]) public feedbackVotes;
     mapping(uint256 => mapping(address => bool)) public hasVoted;
     mapping(uint256 => uint256[]) public productFeedbacks;
     mapping(address => uint256) public userApprovedFeedbackCount; // Tracks approved feedback for badge upgrades
 
-    constructor(address defaultAdmin, address _badgeContract) {
+    constructor(address defaultAdmin, address _badgeContract, address _productNFTContract) {
         require(defaultAdmin != address(0), "Invalid admin address");
         require(_badgeContract != address(0), "Invalid badge contract address");
+        require(_productNFTContract != address(0), "Invalid product NFT contract address");
         _grantRole(DEFAULT_ADMIN_ROLE, defaultAdmin);
         _grantRole(APPROVER_ROLE, defaultAdmin);
         badgeContract = _badgeContract;
+        productNFTContract = _productNFTContract;
         emit BadgeContractSet(_badgeContract);
+        emit ProductNFTContractSet(_productNFTContract);
     }
 
     function setBadgeContract(address _badgeContract) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -61,10 +66,20 @@ contract FeedbackManager is AccessControl {
         emit BadgeContractSet(_badgeContract);
     }
 
+    function setProductNFTContract(address _productNFTContract) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(_productNFTContract != address(0), "Invalid product NFT contract address");
+        productNFTContract = _productNFTContract;
+        emit ProductNFTContractSet(_productNFTContract);
+    }
+
     function submitFeedback(uint256 productId, string memory feedbackHash) external {
         require(productId > 0, "Invalid product ID");
         require(bytes(feedbackHash).length > 0, "Feedback hash cannot be empty");
-        // require(verifyProof(verificationProof, msg.sender), "Invalid verification");
+
+        // Validate product exists
+        if (productNFTContract != address(0)) {
+            require(IProductNFT(productNFTContract).productExists(productId), "Product does not exist");
+        }
 
         uint256 feedbackId = _nextFeedbackId++;
         Feedback memory newFeedback = Feedback({
@@ -118,7 +133,6 @@ contract FeedbackManager is AccessControl {
             feedback.approved = true;
             userApprovedFeedbackCount[feedback.feedbackBy]++;
             emit FeedbackApproved(feedbackId, msg.sender);
-            _mintBadge(feedback.feedbackBy);
         }
     }
 
@@ -130,9 +144,6 @@ contract FeedbackManager is AccessControl {
         feedback.approved = true;
         userApprovedFeedbackCount[feedback.feedbackBy]++;
         emit FeedbackApproved(feedbackId, msg.sender);
-
-        // Mint badge based on approved feedback count
-        _mintBadge(feedback.feedbackBy);
     }
 
     function getUserTier(address user) public view returns (uint256) {
@@ -152,20 +163,48 @@ contract FeedbackManager is AccessControl {
         return 0;
     }
 
-    function _mintBadge(address user) internal {
+    function getEligibleBadges(address user) public view returns (uint256[] memory) {
         uint256 count = userApprovedFeedbackCount[user];
         uint256 currentTier = getUserTier(user);
-        uint256 newTier;
-        string memory ipfsCid = "QmDefaultBadgeCid"; // Replace with frontend-generated CID
 
-        if (count >= 1 && currentTier < 1) newTier = 1; // Seedling
-        else if (count >= 5 && currentTier < 2) newTier = 2; // Wooden
-        else if (count >= 10 && currentTier < 3) newTier = 3; // Bronze
-        else if (count >= 15 && currentTier < 4) newTier = 4; // Silver
-        else if (count >= 20 && currentTier < 5) newTier = 5; // Gold
-        else return;
+        // Count how many badges the user is eligible for
+        uint256 eligibleCount = 0;
+        if (count >= 1 && currentTier < 1) eligibleCount++;
+        if (count >= 5 && currentTier < 2) eligibleCount++;
+        if (count >= 10 && currentTier < 3) eligibleCount++;
+        if (count >= 15 && currentTier < 4) eligibleCount++;
+        if (count >= 20 && currentTier < 5) eligibleCount++;
 
-        IBadgeNFT(badgeContract).mintBadge(user, newTier, ipfsCid);
+        // Build array of eligible badge tiers
+        uint256[] memory eligibleBadges = new uint256[](eligibleCount);
+        uint256 index = 0;
+        if (count >= 1 && currentTier < 1) eligibleBadges[index++] = 1; // Seedling
+        if (count >= 5 && currentTier < 2) eligibleBadges[index++] = 2; // Wooden
+        if (count >= 10 && currentTier < 3) eligibleBadges[index++] = 3; // Bronze
+        if (count >= 15 && currentTier < 4) eligibleBadges[index++] = 4; // Silver
+        if (count >= 20 && currentTier < 5) eligibleBadges[index++] = 5; // Gold
+
+        return eligibleBadges;
+    }
+
+    function claimBadge(uint256 tierId, string memory ipfsCid) external {
+        require(tierId >= 1 && tierId <= 5, "Invalid tier ID");
+        require(bytes(ipfsCid).length > 0, "IPFS CID cannot be empty");
+
+        uint256 count = userApprovedFeedbackCount[msg.sender];
+        uint256 currentTier = getUserTier(msg.sender);
+
+        // Check if user is eligible for this specific tier
+        bool isEligible = false;
+        if (tierId == 1 && count >= 1 && currentTier < 1) isEligible = true;
+        else if (tierId == 2 && count >= 5 && currentTier < 2) isEligible = true;
+        else if (tierId == 3 && count >= 10 && currentTier < 3) isEligible = true;
+        else if (tierId == 4 && count >= 15 && currentTier < 4) isEligible = true;
+        else if (tierId == 5 && count >= 20 && currentTier < 5) isEligible = true;
+
+        require(isEligible, "Not eligible for this badge");
+
+        IBadgeNFT(badgeContract).mintBadge(msg.sender, tierId, ipfsCid);
     }
 
     function verifyProof(bytes calldata proof, address user) internal pure returns (bool) {
@@ -250,4 +289,8 @@ contract FeedbackManager is AccessControl {
 interface IBadgeNFT {
     function getUserTier(address user) external view returns (uint256);
     function mintBadge(address user, uint256 tierId, string memory ipfsCid) external;
+}
+
+interface IProductNFT {
+    function productExists(uint256 productId) external view returns (bool);
 }

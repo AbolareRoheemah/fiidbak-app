@@ -34,7 +34,7 @@ export function EmptyState({ icon, title, description, action }: EmptyStateProps
       {action && (
         <button
           onClick={action.onClick}
-          className="btn-primary"
+          className="btn-primary cursor-pointer"
         >
           {action.label}
         </button>

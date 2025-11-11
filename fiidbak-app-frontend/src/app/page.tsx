@@ -1,36 +1,32 @@
+'use client'
+
 import { ArrowRight, Shield, Users, Zap, TrendingUp, Star, Sparkles } from "lucide-react"
 import { ProductCard } from "../components/ui/ProductCard"
+import { LoadingSpinner } from "../components/ui/LoadingSpinner"
 import Link from "next/link"
+import { useProductStore } from "@/store/useProductStore"
+import { useEffect, useState } from "react"
+import { useGetAllProducts } from "@/hooks/useContract"
+import { getUploadedFile } from "@/utils/pinata"
 
-const featuredProducts = [
-  {
-    id: 1,
-    name: "Decentralized Social Media Platform",
-    description: "A blockchain-based social media platform with user ownership and data privacy.",
-    imageUrl: "https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=400",
-    owner: "0x1234...5678",
-    feedbackCount: 23,
-    createdAt: "2024-01-15",
-  },
-  {
-    id: 2,
-    name: "NFT Marketplace",
-    description: "Trade and discover unique digital assets in our secure marketplace.",
-    imageUrl: "https://images.unsplash.com/photo-1639322537228-f912d0a4d3d8?w=400",
-    owner: "0x8765...4321",
-    feedbackCount: 45,
-    createdAt: "2024-01-10",
-  },
-  {
-    id: 3,
-    name: "DeFi Yield Farming Protocol",
-    description: "Earn rewards by providing liquidity to our decentralized finance protocol.",
-    imageUrl: "https://images.unsplash.com/photo-1642790103337-344b9c2b4e6e?w=400",
-    owner: "0xabcd...efgh",
-    feedbackCount: 67,
-    createdAt: "2024-01-05",
-  },
-]
+interface ContractProduct {
+  productId: bigint
+  owner: string
+  ipfsCid: string
+  createdAt: bigint
+  exists: boolean
+}
+
+interface Product {
+  id: number
+  name: string
+  description: string
+  imageUrl: string
+  owner: string
+  feedbackCount: number
+  createdAt: string
+  ipfsCid: string
+}
 
 const features = [
   {
@@ -57,17 +53,15 @@ function SimpleButton({
   children,
   className = "",
   variant = "primary",
-  ...props
 }: {
   href: string
   children: React.ReactNode
   className?: string
   variant?: "primary" | "outline" | "accent"
-  [key: string]: any
 }) {
-  let base =
+  const base =
     "inline-flex items-center justify-center rounded-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
-  let size = "text-lg px-8 py-6"
+  const size = "text-lg px-8 py-6"
   let variantClass = ""
   if (variant === "primary") {
     variantClass = "gradient-primary glow-primary text-white border border-transparent"
@@ -81,7 +75,6 @@ function SimpleButton({
     <Link
       href={href}
       className={`${base} ${size} ${variantClass} ${className}`}
-      {...props}
     >
       {children}
     </Link>
@@ -89,6 +82,83 @@ function SimpleButton({
 }
 
 export default function Home() {
+  const { products: storeProducts, hasProducts } = useProductStore()
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([])
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false)
+
+  // Fetch products from contract
+  const {
+    data: productsRaw = [],
+    isLoading: contractLoading,
+  } = useGetAllProducts([BigInt(10), BigInt(0)])
+
+  // Fetch IPFS data for products
+  useEffect(() => {
+    let ignore = false
+
+    async function fetchProducts() {
+      // Try to use products from store first
+      if (hasProducts() && storeProducts.length > 0) {
+        setFeaturedProducts(storeProducts.slice(0, 3))
+        return
+      }
+
+      // Otherwise fetch from contract
+      if (!productsRaw || !Array.isArray(productsRaw) || productsRaw.length === 0) {
+        setFeaturedProducts([])
+        return
+      }
+
+      setIsLoadingProducts(true)
+
+      const contractProducts = productsRaw as ContractProduct[]
+      const productsWithIPFS = await Promise.all(
+        contractProducts
+          .filter(p => p.exists)
+          .slice(0, 3) // Only get first 3 for featured section
+          .map(async (p) => {
+            let ipfsData: { name?: string; description?: string; image?: string } = {}
+            try {
+              const url = await getUploadedFile(p.ipfsCid)
+              if (url) {
+                const res = await fetch(url)
+                if (res.ok) {
+                  ipfsData = await res.json()
+                }
+              }
+            } catch (e) {
+              console.error(`Failed to fetch IPFS data for product ${p.productId}:`, e)
+              ipfsData = {}
+            }
+
+            return {
+              id: Number(p.productId),
+              name: ipfsData.name || 'Unnamed Product',
+              description: ipfsData.description || '',
+              imageUrl: ipfsData.image || '',
+              owner: p.owner,
+              feedbackCount: 0,
+              createdAt: new Date(Number(p.createdAt) * 1000).toISOString().substring(0, 10),
+              ipfsCid: p.ipfsCid
+            }
+          })
+      )
+
+      if (!ignore) {
+        setFeaturedProducts(productsWithIPFS)
+        setIsLoadingProducts(false)
+      }
+    }
+
+    fetchProducts()
+
+    return () => {
+      ignore = true
+    }
+  }, [productsRaw, storeProducts, hasProducts])
+
+  const isLoading = contractLoading || isLoadingProducts
+
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -220,11 +290,27 @@ export default function Home() {
             </h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {featuredProducts.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
+          {isLoading ? (
+            <div className="flex justify-center items-center py-12">
+              <LoadingSpinner size="lg" />
+            </div>
+          ) : featuredProducts.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {featuredProducts.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground mb-4">No products available yet.</p>
+              <SimpleButton href="/create-product" variant="primary">
+                <>
+                  Create First Product
+                  <ArrowRight size={20} className="ml-2" />
+                </>
+              </SimpleButton>
+            </div>
+          )}
 
           <div className="text-center mt-12">
             <SimpleButton

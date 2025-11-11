@@ -9,13 +9,14 @@ import { useAccount, useSwitchChain } from "wagmi"
 const navigation = [
   { name: "Home", href: "/", icon: Home },
   { name: "Products", href: "/products", icon: Package },
-  { name: "Feedback", href: "/feedback", icon: MessageSquare },
+  { name: "Feedback", href: "/feedbacks", icon: MessageSquare },
   { name: "Profile", href: "/profile", icon: User },
   { name: "Admin", href: "/admin-dashboard", icon: Shield },
 ]
 
 // Lisk Sepolia chainId: 4202 (decimal), 0x106A (hex)
-const LISK_SEPOLIA_CHAIN_ID = 4202
+// const LISK_SEPOLIA_CHAIN_ID = 4202
+const BASE_SEPOLIA_CHAIN_ID = 84532
 
 export function Header() {
   const [isOpen, setIsOpen] = useState(false)
@@ -24,7 +25,7 @@ export function Header() {
   const [showNetworkWarning, setShowNetworkWarning] = useState(false)
   const { switchChain, isPending: isSwitching } = useSwitchChain()
 
-  const isWrongNetwork = isConnected && chain && chain.id !== LISK_SEPOLIA_CHAIN_ID
+  const isWrongNetwork = isConnected && chain && chain.id !== BASE_SEPOLIA_CHAIN_ID
 
   useEffect(() => {
     setShowNetworkWarning(isWrongNetwork || false)
@@ -65,7 +66,7 @@ export function Header() {
     (e?: React.MouseEvent) => {
       if (e) e.preventDefault()
       if (switchChain) {
-        switchChain({ chainId: LISK_SEPOLIA_CHAIN_ID })
+        switchChain({ chainId: BASE_SEPOLIA_CHAIN_ID })
       }
     },
     [switchChain]
@@ -102,7 +103,7 @@ export function Header() {
           <div className="flex items-center gap-2 bg-yellow-100 border border-yellow-300 text-yellow-900 px-4 py-2 rounded-md mt-4 mb-2">
             <AlertTriangle className="text-yellow-600" size={18} />
             <span>
-              Please switch your wallet to the <b>Lisk Sepolia</b> network to use Fiidbak.
+              Please switch your wallet to the <b>Base Sepolia</b> network to use Fiidbak.
             </span>
             <button
               onClick={handleSwitchChain}
@@ -117,10 +118,11 @@ export function Header() {
         <div className="flex items-center justify-between h-16 w-full">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-2 mb-0 sm:mb-0">
-            <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-lg">F</span>
+            <div className="w-10 h-10 bg-gradient-primary rounded-lg flex items-center justify-center">
+            <img src="/logo.jpeg" alt="" className="w-10 h-10" />
             </div>
             <span className="text-xl font-bold">Fiidbak</span>
+            
           </Link>
 
           {/* Desktop Navigation */}

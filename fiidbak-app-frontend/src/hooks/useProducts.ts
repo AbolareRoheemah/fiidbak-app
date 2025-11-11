@@ -1,8 +1,16 @@
-import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
-import { getAllProducts, useCreateProduct } from './useContract'
+import { useGetAllProducts } from './useContract'
 import { uploadJsonToPinata } from '@/utils/pinata'
 import toast from 'react-hot-toast'
+
+// Contract Product struct matches this interface
+interface ContractProduct {
+  productId: bigint
+  owner: string
+  ipfsCid: string
+  createdAt: bigint
+  exists: boolean
+}
 
 export interface Product {
   id: number
@@ -24,20 +32,22 @@ export function useProducts() {
     isLoading,
     error: fetchError,
     refetch
-  } = getAllProducts([50, 0])
+  } = useGetAllProducts([BigInt(50), BigInt(0)])
 
-  // Parse product data
+  // Parse product data - contract now returns Product[] with correct field names
   const products: Product[] = Array.isArray(productsData)
-    ? (productsData as any[]).map((p: any, index) => ({
-        id: Number(p.tokenId || index),
-        name: '', // Will be fetched from IPFS
-        description: '', // Will be fetched from IPFS
-        imageUrl: '', // Will be fetched from IPFS
-        owner: p.owner || '',
-        feedbackCount: Number(p.feedbackCount || 0),
-        createdAt: p.createdAt ? new Date(Number(p.createdAt) * 1000).toISOString().substring(0, 10) : '',
-        ipfsCid: p.ipfsCid || ''
-      }))
+    ? (productsData as ContractProduct[])
+        .filter(p => p.exists) // Filter out deleted products
+        .map((p) => ({
+          id: Number(p.productId),
+          name: '', // Will be fetched from IPFS
+          description: '', // Will be fetched from IPFS
+          imageUrl: '', // Will be fetched from IPFS
+          owner: p.owner,
+          feedbackCount: 0, // Will need to fetch separately or use getProductWithFeedbackCount
+          createdAt: new Date(Number(p.createdAt) * 1000).toISOString().substring(0, 10),
+          ipfsCid: p.ipfsCid
+        }))
     : []
 
   const error = fetchError ? 'Failed to fetch products' : null

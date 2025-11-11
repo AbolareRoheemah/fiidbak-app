@@ -13,9 +13,11 @@ contract ProductNFT is ERC1155, Ownable, AccessControl, ERC1155Burnable {
     bytes32 public constant CREATOR_ROLE = keccak256("CREATOR_ROLE");
     // product name, desc, and other info will be stored on IPFS
     struct Product {
-        uint256 product_id;
-        address product_owner;
-        string ipfs_cid;
+        uint256 productId;
+        address owner;
+        string ipfsCid;
+        uint256 createdAt;
+        bool exists;
     }
 
     constructor() ERC1155("") Ownable(msg.sender) {
@@ -26,14 +28,22 @@ contract ProductNFT is ERC1155, Ownable, AccessControl, ERC1155Burnable {
     event ProductMinted(address indexed product_owner, uint256 tokenId, uint256 amount);
     event ProductDeleted(address indexed product_owner, uint256 tokenId, uint256 amount);
     event URISet(string newUri);
+    event FeedbackManagerSet(address indexed feedbackManager);
 
+    address public feedbackManager;
     mapping (uint256 => Product) public productsById;
-    // mapping (address => uint256[]) public productIdsByOwner;
+    uint256[] private _allProductIds; // Track all product IDs for efficient iteration
     mapping(uint256 => string) private _tokenURIs;
 
     function setURI(string memory newuri) public onlyOwner {
         _setURI(newuri);
         emit URISet(newuri);
+    }
+
+    function setFeedbackManager(address _feedbackManager) external onlyOwner {
+        require(_feedbackManager != address(0), "Invalid feedback manager address");
+        feedbackManager = _feedbackManager;
+        emit FeedbackManagerSet(_feedbackManager);
     }
 
     function uri(uint256 tokenId) public view override returns (string memory) {
@@ -48,22 +58,24 @@ contract ProductNFT is ERC1155, Ownable, AccessControl, ERC1155Burnable {
         public
     {
         require(product_owner != address(0), "invalid owner address");
+        require(product_owner == msg.sender, "can only mint for yourself");
         require(bytes(ipfs_cid).length != 0, "IPFS CID is required");
         require(amount > 0, "Amount must be positive");
 
         uint256 tokenId = _nextTokenId++;
-        // require(balanceOf(product_owner, tokenId) == 0, "user already owns this product");
-        
+
         Product memory newProduct = Product({
-            product_id: tokenId,
-            product_owner: product_owner,
-            ipfs_cid: ipfs_cid
+            productId: tokenId,
+            owner: product_owner,
+            ipfsCid: ipfs_cid,
+            createdAt: block.timestamp,
+            exists: true
         });
-        
+
         productsById[tokenId] = newProduct;
-        
+        _allProductIds.push(tokenId);
+
         _mint(product_owner, tokenId, amount, "");
-        // productIdsByOwner[product_owner].push(tokenId);
         _tokenURIs[tokenId] = string(abi.encodePacked("https://ipfs.io/ipfs/", ipfs_cid));
         _grantRole(CREATOR_ROLE, product_owner);
 
@@ -73,9 +85,11 @@ contract ProductNFT is ERC1155, Ownable, AccessControl, ERC1155Burnable {
     function deleteProduct(uint256 product_id) public onlyRole(CREATOR_ROLE) {
         require(msg.sender != address(0), "Invalid address");
         require(balanceOf(msg.sender, product_id) > 0, "You dont own this product");
+        require(productsById[product_id].exists, "Product does not exist");
+
         uint256 amt = balanceOf(msg.sender, product_id);
         _burn(msg.sender, product_id, amt);
-        delete productsById[product_id];
+        productsById[product_id].exists = false;
         delete _tokenURIs[product_id];
 
         emit ProductDeleted(msg.sender, product_id, amt);
@@ -84,9 +98,11 @@ contract ProductNFT is ERC1155, Ownable, AccessControl, ERC1155Burnable {
     function deleteProductAdmin(address product_owner, uint256 product_id) external onlyRole(DEFAULT_ADMIN_ROLE) {
         require(product_owner != address(0), "Invalid address");
         require(balanceOf(product_owner, product_id) > 0, "Owner doesn't own the product");
+        require(productsById[product_id].exists, "Product does not exist");
+
         uint256 amt = balanceOf(product_owner, product_id);
         _burn(product_owner, product_id, amt);
-        delete productsById[product_id];
+        productsById[product_id].exists = false;
         delete _tokenURIs[product_id];
 
         emit ProductDeleted(product_owner, product_id, amt);
@@ -101,24 +117,52 @@ contract ProductNFT is ERC1155, Ownable, AccessControl, ERC1155Burnable {
     }
 
     function getProduct(uint256 product_id) external view returns (Product memory) {
-        require(product_id <= _nextTokenId, "invalid product ID");
+        require(product_id > 0 && product_id < _nextTokenId, "invalid product ID");
+        require(productsById[product_id].exists, "Product does not exist");
         return productsById[product_id];
+    }
+
+    function getProductWithFeedbackCount(uint256 product_id) external view returns (Product memory, uint256) {
+        require(product_id > 0 && product_id < _nextTokenId, "invalid product ID");
+        require(productsById[product_id].exists, "Product does not exist");
+
+        uint256 feedbackCount = 0;
+        if (feedbackManager != address(0)) {
+            try IFeedbackManager(feedbackManager).getProductFeedbackCount(product_id) returns (uint256 count) {
+                feedbackCount = count;
+            } catch {}
+        }
+
+        return (productsById[product_id], feedbackCount);
     }
 
     function getAllProducts(uint256 product_count, uint256 start_index) external view returns (Product[] memory) {
         require(product_count > 0, "invalid count");
-        require(start_index < _nextTokenId, "start index higher than product length");
 
-        uint256 availableProducts = _nextTokenId - start_index;
-        uint256 returnCount = availableProducts < product_count ? availableProducts: product_count;
-        
+        // Handle empty product list
+        if (_allProductIds.length == 0) {
+            return new Product[](0);
+        }
+
+        require(start_index < _allProductIds.length, "start index out of bounds");
+
+        uint256 availableProducts = _allProductIds.length - start_index;
+        uint256 returnCount = availableProducts < product_count ? availableProducts : product_count;
+
         Product[] memory products = new Product[](returnCount);
+        uint256 validCount = 0;
 
-        for (uint i = 0; i < returnCount; i++) {
-            uint256 productId = start_index + i;
-            if (productsById[productId].product_id != 0) {
-                products[i] = productsById[productId];
+        for (uint256 i = 0; i < returnCount; i++) {
+            uint256 productId = _allProductIds[start_index + i];
+            if (productsById[productId].exists) {
+                products[validCount] = productsById[productId];
+                validCount++;
             }
+        }
+
+        // Resize array to only include valid products
+        assembly {
+            mstore(products, validCount)
         }
 
         return products;
@@ -127,21 +171,52 @@ contract ProductNFT is ERC1155, Ownable, AccessControl, ERC1155Burnable {
     function getOwnerProducts(address product_owner, uint256 product_count, uint256 start_index) external view returns (Product[] memory) {
         require(product_owner != address(0), "invalid product owner address");
         require(product_count > 0, "invalid count");
-        require(start_index < _nextTokenId, "start index higher than product length");
 
-        uint256 availableProducts = _nextTokenId - start_index;
-        uint256 returnCount = availableProducts < product_count ? availableProducts: product_count;
+        // Handle empty product list
+        if (_allProductIds.length == 0) {
+            return new Product[](0);
+        }
 
-        Product[] memory products = new Product[](returnCount);
+        require(start_index < _allProductIds.length, "start index out of bounds");
 
-        for (uint256 i; i < returnCount; i++) {
-            uint256 productId = start_index + i;
-            if (balanceOf(product_owner, productId) > 0) {
-                products[i] = productsById[productId];
+        uint256 availableProducts = _allProductIds.length - start_index;
+        uint256 searchCount = availableProducts < product_count * 2 ? availableProducts : product_count * 2;
+
+        Product[] memory products = new Product[](product_count);
+        uint256 validCount = 0;
+
+        for (uint256 i = 0; i < searchCount && validCount < product_count; i++) {
+            uint256 productId = _allProductIds[start_index + i];
+            if (productsById[productId].exists && balanceOf(product_owner, productId) > 0) {
+                products[validCount] = productsById[productId];
+                validCount++;
             }
         }
 
+        // Resize array to only include valid products
+        assembly {
+            mstore(products, validCount)
+        }
+
         return products;
+    }
+
+    function getTotalProducts() external view returns (uint256) {
+        return _nextTokenId - 1;
+    }
+
+    function getTotalValidProducts() external view returns (uint256) {
+        uint256 validCount = 0;
+        for (uint256 i = 0; i < _allProductIds.length; i++) {
+            if (productsById[_allProductIds[i]].exists) {
+                validCount++;
+            }
+        }
+        return validCount;
+    }
+
+    function productExists(uint256 product_id) external view returns (bool) {
+        return productsById[product_id].exists;
     }
 
     function verifyProof(bytes calldata proof, address user) internal pure returns (bool) {
@@ -179,4 +254,8 @@ contract ProductNFT is ERC1155, Ownable, AccessControl, ERC1155Burnable {
     function supportsInterface(bytes4 interfaceId) public view override(ERC1155, AccessControl) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
+}
+
+interface IFeedbackManager {
+    function getProductFeedbackCount(uint256 productId) external view returns (uint256);
 }
