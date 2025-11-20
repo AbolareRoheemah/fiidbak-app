@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect } from "react"
-import { Shield, Users, Package, MessageSquare, CheckCircle, XCircle, AlertTriangle } from "lucide-react"
+import { Shield, Package, MessageSquare, CheckCircle, XCircle, AlertTriangle } from "lucide-react"
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner"
 import { useAccount } from "wagmi"
 import { useIsApprover, useApproveFeedback, useAllFeedbacksByRange, useGetAllProducts } from "@/hooks/useContract"
@@ -13,6 +13,23 @@ interface PendingFeedback {
   productId: number
   productName?: string
   createdAt: string
+  approved: boolean
+}
+
+interface ContractProduct {
+  productId: bigint
+  owner: string
+  ipfsCid: string
+  createdAt: bigint
+  exists: boolean
+}
+
+interface ContractFeedback {
+  feedbackId: bigint
+  feedbackHash: string
+  feedbackBy: string
+  productId: bigint
+  timestamp: bigint
   approved: boolean
 }
 
@@ -55,7 +72,7 @@ export default function AdminPage() {
     if (!productsData || !Array.isArray(productsData)) return
 
     const names: Record<number, string> = {}
-    for (const product of productsData as any[]) {
+    for (const product of productsData as ContractProduct[]) {
       if (product.productId) {
         // Fetch product name from IPFS CID if needed
         names[Number(product.productId)] = `Product #${product.productId}`
@@ -71,11 +88,11 @@ export default function AdminPage() {
 
       setIsLoadingFeedbacks(true)
       try {
-        const feedbacks = allFeedbacksData as any[]
+        const feedbacks = allFeedbacksData as ContractFeedback[]
 
         const pending = feedbacks
-          .filter((f: any) => !f.approved)
-          .map((f: any) => ({
+          .filter((f: ContractFeedback) => !f.approved)
+          .map((f: ContractFeedback) => ({
             id: f.feedbackId || 0,
             content: f.feedbackHash || "",
             author: f.feedbackBy || "",
@@ -88,8 +105,8 @@ export default function AdminPage() {
           }))
 
         const approved = feedbacks
-          .filter((f: any) => f.approved)
-          .map((f: any) => ({
+          .filter((f: ContractFeedback) => f.approved)
+          .map((f: ContractFeedback) => ({
             id: f.feedbackId || 0,
             content: f.feedbackHash || "",
             author: f.feedbackBy || "",
@@ -149,7 +166,7 @@ export default function AdminPage() {
         <div className="text-center">
           <AlertTriangle size={64} className="text-warning-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-white-900 mb-2">Access Denied</h2>
-          <p className="text-gray-600">You don't have permission to access admin features.</p>
+          <p className="text-gray-600">You don&apos;t have permission to access admin features.</p>
         </div>
       </div>
     )

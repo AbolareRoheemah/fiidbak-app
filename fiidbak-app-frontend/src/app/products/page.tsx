@@ -86,8 +86,8 @@ export default function ProductsPage() {
 
       try {
         // Remove default/empty product
-        const filteredRaw: ContractProduct[] = productsRaw.filter(
-          (p: any) =>
+        const filteredRaw: ContractProduct[] = (productsRaw as ContractProduct[]).filter(
+          (p: ContractProduct) =>
             p &&
             p.productId &&
             Number(p.productId) !== 0 &&
@@ -109,7 +109,7 @@ export default function ProductsPage() {
 
         // Fetch IPFS data for each product
         const productPromises = filteredRaw.map(async (p) => {
-          let ipfsData: any = {}
+          let ipfsData: Record<string, unknown> = {}
           try {
             const url = await getUploadedFile(p.ipfsCid)
             if (url) {
@@ -118,7 +118,7 @@ export default function ProductsPage() {
                 ipfsData = await res.json()
               }
             }
-          } catch (e) {
+          } catch {
             ipfsData = {}
           }
           return {
@@ -312,7 +312,7 @@ export default function ProductsPage() {
             <select
               value={sortBy}
               onChange={(e) => {
-                setSortBy(e.target.value as any)
+                setSortBy(e.target.value as "mostReviews")
                 setCurrentPage(1)
               }}
               className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer"

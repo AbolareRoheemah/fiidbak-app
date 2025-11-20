@@ -5,6 +5,18 @@ import {
 import { uploadJsonToPinata } from '@/utils/pinata'
 import toast from 'react-hot-toast'
 
+interface ContractFeedback {
+  feedbackId: bigint
+  feedbackHash: string
+  feedbackBy: string
+  productId: bigint
+  timestamp: bigint
+  approved: boolean
+  positiveVotes?: bigint
+  negativeVotes?: bigint
+  totalVotes?: bigint
+}
+
 export interface Feedback {
   id: number
   content: string
@@ -34,7 +46,7 @@ export function useFeedback() {
 
   // Parse feedback data
   const feedbacks: Feedback[] = Array.isArray(feedbackData)
-    ? (feedbackData as any[]).map((f: any, index) => ({
+    ? (feedbackData as ContractFeedback[]).map((f: ContractFeedback, index) => ({
         id: Number(f.feedbackId || index),
         content: f.feedbackHash || '',
         author: f.feedbackBy || '',

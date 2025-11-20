@@ -125,7 +125,7 @@ export function FeedbackCard({ feedback, onVote, canVote }: FeedbackCardProps) {
         {/* Voting Status */}
         {feedback.hasUserVoted && (
           <div className="text-sm text-primary-600 bg-primary-50 px-3 py-2 rounded-lg">
-            You've already voted on this feedback
+            You&apos;ve already voted on this feedback
           </div>
         )}
         

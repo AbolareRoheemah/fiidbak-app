@@ -53,7 +53,6 @@ export default function FeedbackPage() {
   const {
     data: feedbacksData,
     isLoading: isContractLoading,
-    error: fetchError,
     refetch
   } = useAllFeedbacksByRange(0, 100)
 
@@ -62,7 +61,7 @@ export default function FeedbackPage() {
   const userTier = Number(userTierData || 0)
 
   // Voting hook
-  const { voteOnFeedback, isVoteLoading } = useVoteFeedback(() => {
+  const { voteOnFeedback } = useVoteFeedback(() => {
     // Refetch feedbacks after voting
     refetch()
   })
@@ -193,7 +192,7 @@ export default function FeedbackPage() {
     })
   }, [filteredFeedbacks, sortBy])
 
-  const handleVote = async (feedbackId: number, isPositive: boolean) => {
+  const handleVote = async (feedbackId: number | bigint, isPositive: boolean) => {
     if (!address) {
       alert("Please connect your wallet to vote")
       return
@@ -204,7 +203,7 @@ export default function FeedbackPage() {
       return
     }
 
-    await voteOnFeedback(feedbackId, isPositive)
+    await voteOnFeedback(Number(feedbackId), isPositive)
   }
 
   // Check if user can vote

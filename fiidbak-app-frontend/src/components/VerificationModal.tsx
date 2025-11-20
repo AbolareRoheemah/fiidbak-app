@@ -66,7 +66,7 @@ export function VerificationModal({ isOpen, onClose, onVerified }: VerificationM
             <>
               <h2 className="text-2xl font-bold mb-2">Verify Your Wallet</h2>
               <p className="text-muted-foreground mb-6">
-                Sign a message to prove you own this wallet. This is free and doesn't cost any gas.
+                Sign a message to prove you own this wallet. This is free and doesn&apos;t cost any gas.
               </p>
 
               {/* What happens section */}
@@ -75,7 +75,7 @@ export function VerificationModal({ isOpen, onClose, onVerified }: VerificationM
                 <ol className="space-y-2 text-sm text-muted-foreground">
                   <li className="flex items-start">
                     <span className="font-bold mr-2 text-primary">1.</span>
-                    <span>You'll sign a message in your wallet (free, no gas)</span>
+                    <span>You&apos;ll sign a message in your wallet (free, no gas)</span>
                   </li>
                   <li className="flex items-start">
                     <span className="font-bold mr-2 text-primary">2.</span>

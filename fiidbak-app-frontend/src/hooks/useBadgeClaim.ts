@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useAccount, useReadContract, useWriteContract } from 'wagmi'
 import { FEEDBACK_MANAGER_ABI } from '@/lib/feedback_mg_abi'
 import { CONTRACT_ADDRESSES } from '@/lib/contracts'
 
@@ -72,9 +72,10 @@ export function useClaimBadge() {
       })
 
       return hash
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error claiming badge:', error)
-      setClaimError(error.message || 'Failed to claim badge')
+      const errorMessage = error instanceof Error ? error.message : 'Failed to claim badge'
+      setClaimError(errorMessage)
       throw error
     } finally {
       setIsClaimingBadge(false)

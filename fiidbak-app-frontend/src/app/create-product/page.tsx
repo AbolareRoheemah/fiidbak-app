@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Upload, X } from 'lucide-react'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import toast from 'react-hot-toast'
-import { uploadFileToPinata, uploadJsonToPinata } from '@/utils/pinata'
+import { uploadJsonToPinata } from '@/utils/pinata'
 import { useCreateProduct } from '@/hooks/useContract'
 import { useAccount } from 'wagmi'
 import { VerificationGuard } from '@/components/VerificationGuard'
@@ -92,7 +92,7 @@ export default function CreateProductPage() {
     try {
       // 1. Upload product data to IPFS via Pinata
       console.log('📤 Uploading to IPFS...')
-      const ipfsPayload: Record<string, any> = {
+      const ipfsPayload: Record<string, string | string[] | File | null> = {
         name: formData.name,
         description: formData.description,
         category: formData.category,
@@ -101,8 +101,7 @@ export default function CreateProductPage() {
         image: formData.image
       }
 
-      let ipfsCid: string
-      ipfsCid = await uploadJsonToPinata(ipfsPayload)
+      const ipfsCid = await uploadJsonToPinata(ipfsPayload)
       console.log('✅ IPFS Upload successful, CID:', ipfsCid)
 
       // 2. Call the contract to mint the product NFT
@@ -114,8 +113,8 @@ export default function CreateProductPage() {
       await createProduct(address as `0x${string}`, 1, ipfsCid)
       console.log('✅ Contract call initiated')
       // Success toast will be handled by the hook
-    } catch (error: any) {
-      const errorMessage = error?.message || 'Failed to create product. Please try again.'
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create product. Please try again.'
       toast.error(errorMessage)
       console.error('❌ Error creating product:', error)
     } finally {

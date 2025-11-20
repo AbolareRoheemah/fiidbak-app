@@ -24,7 +24,7 @@ export async function uploadFileToPinata(file: File) {
  * @param data - The object to upload (will be stringified to JSON).
  * @returns The IPFS CID string.
  */
-export async function uploadJsonToPinata(data: Record<string, any>) {
+export async function uploadJsonToPinata(data: Record<string, string | string[] | File | null | unknown>) {
   try {
     // If the object contains a File (e.g., image), handle it as a multipart upload
     if (data.image && data.image instanceof File) {

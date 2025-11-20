@@ -4,7 +4,7 @@ import { ArrowRight, Shield, Users, Zap } from "lucide-react"
 import { ProductCard } from "../components/ui/ProductCard"
 import { LoadingSpinner } from "../components/ui/LoadingSpinner"
 import Link from "next/link"
-import { useProductStore } from "@/store/useProductStore"
+import { useProductStore, Product } from "@/store/useProductStore"
 import { useEffect, useState } from "react"
 import { useGetAllProducts } from "@/hooks/useContract"
 import { getUploadedFile } from "@/utils/pinata"
@@ -15,17 +15,6 @@ interface ContractProduct {
   ipfsCid: string
   createdAt: bigint
   exists: boolean
-}
-
-interface Product {
-  id: number
-  name: string
-  description: string
-  imageUrl: string
-  owner: string
-  feedbackCount: number
-  createdAt: string
-  ipfsCid: string
 }
 
 const features = [
@@ -246,7 +235,7 @@ export default function Home() {
               Why Fiidbak?
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Traditional review platforms can delete, hide, or manipulate feedback. We can't.
+              Traditional review platforms can delete, hide, or manipulate feedback. We can&apos;t.
             </p>
           </div>
 
@@ -324,7 +313,7 @@ export default function Home() {
         <div className="max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8">
           <h2 className="text-4xl md:text-6xl font-bold mb-6">Start reviewing or list your product</h2>
           <p className="text-xl text-muted-foreground mb-12">
-            Connect your wallet to get started. It's free.
+            Connect your wallet to get started. It&apos;s free.
           </p>
           <SimpleButton href="/products" variant="primary">
             <>

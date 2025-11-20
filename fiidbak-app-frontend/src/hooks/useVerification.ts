@@ -3,7 +3,7 @@ import { useAccount, useSignMessage } from 'wagmi';
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { CONTRACT_ADDRESSES } from '@/lib/contracts';
 import { toast } from 'react-hot-toast';
-import { keccak256, toBytes, encodePacked, concat } from 'viem';
+import { keccak256, toBytes, encodePacked } from 'viem';
 
 const USER_VERIFICATION_ABI = [
   {
@@ -115,12 +115,12 @@ export function useVerification() {
         args: [nonce, signature as `0x${string}`],
       });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Verification error:', error);
       toast.dismiss('signing');
       toast.dismiss('verifying');
 
-      if (error.message?.includes('User rejected')) {
+      if (error instanceof Error && error.message?.includes('User rejected')) {
         toast.error('Signature rejected');
       } else {
         toast.error('Verification failed. Please try again.');

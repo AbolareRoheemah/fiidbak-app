@@ -12,6 +12,7 @@ export interface Product {
   category?: string
   website?: string
   tags?: string[]
+  ipfsCid?: string
 }
 
 interface ProductStore {
