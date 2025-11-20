@@ -136,11 +136,19 @@ export default function ProductsPage() {
         })
 
         const productsArr = await Promise.all(productPromises)
+
+        // Filter out products with invalid/empty data
+        const validProductsArr = productsArr.filter(p =>
+          p.name &&
+          p.name !== 'Unnamed Product' &&
+          p.name.trim().length > 0
+        )
+
         // Sort by id descending (latest first)
-        productsArr.sort((a, b) => b.id - a.id)
+        validProductsArr.sort((a, b) => b.id - a.id)
 
         if (!ignore) {
-          setProducts(productsArr)
+          setProducts(validProductsArr)
           hasFetchedRef.current = true
         }
       } catch (err) {

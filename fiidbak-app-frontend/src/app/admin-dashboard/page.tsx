@@ -4,6 +4,7 @@ import { Shield, Users, Package, MessageSquare, CheckCircle, XCircle, AlertTrian
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner"
 import { useAccount } from "wagmi"
 import { useIsApprover, useApproveFeedback, useAllFeedbacksByRange, useGetAllProducts } from "@/hooks/useContract"
+import { useRouter } from "next/navigation"
 
 interface PendingFeedback {
   id: number | bigint
@@ -33,6 +34,7 @@ export default function AdminPage() {
   const { data: isApproverData, isLoading: isCheckingApprover } = useIsApprover(address as `0x${string}`)
   console.log("isApproverData", isApproverData)
   const isAdmin = Boolean(isApproverData)
+  const router = useRouter()
 
   // Get all feedbacks
   const { data: allFeedbacksData, refetch: refetchFeedbacks } = useAllFeedbacksByRange(0, 100)
@@ -186,17 +188,17 @@ export default function AdminPage() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="card">
+        <div className="card p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Products</p>
-              <p className="text-2xl font-bold text-white-900">{stats.totalProducts}</p>
+              <p className="text-2xl font-bold text-white-900">{stats.totalProducts - 1}</p>
             </div>
             <Package className="text-gray-600" size={24} />
           </div>
         </div>
 
-        <div className="card">
+        <div className="card p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Feedback</p>
@@ -206,7 +208,7 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="card">
+        <div className="card p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Pending Approvals</p>
@@ -216,7 +218,7 @@ export default function AdminPage() {
           </div>
         </div>
 
-        <div className="card">
+        <div className="card p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Approved</p>
@@ -229,11 +231,11 @@ export default function AdminPage() {
 
       {/* Quick Actions */}
       <div className="mb-8 grid grid-cols-1 gap-8">
-        <div className="card">
+        <div className="card p-4">
           <h3 className="text-lg font-semibold text-white-900 mb-4">Quick Actions</h3>
           <div className="flex gap-2">
-            <button className="w-full btn-primary h-12 cursor-pointer">View All Products</button>
-            <button className="w-full btn-outline h-12 cursor-pointer">Manage Users</button>
+            <button className="w-full btn-primary h-12 cursor-pointer" onClick={() => router.push('/products')}>View All Products</button>
+            <button className="w-full border border-primary-500 text-primary-500 rounded-lg h-12 cursor-pointer" onClick={() => router.push('/feedbacks')}>View All Feedbacks</button>
           </div>
         </div>
       </div>
@@ -245,7 +247,7 @@ export default function AdminPage() {
           <nav className="-mb-px flex space-x-8">
             <button
               onClick={() => setActiveTab('pending')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`py-2 px-1 border-b-2 font-medium text-sm cursor-pointer ${
                 activeTab === 'pending'
                   ? "border-primary-500 text-primary-600"
                   : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
@@ -260,7 +262,7 @@ export default function AdminPage() {
             </button>
             <button
               onClick={() => setActiveTab('approved')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`py-2 px-1 border-b-2 font-medium text-sm cursor-pointer ${
                 activeTab === 'approved'
                   ? "border-primary-500 text-primary-600"
                   : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
@@ -280,7 +282,7 @@ export default function AdminPage() {
         {activeTab === 'pending' && pendingFeedbacks.length > 0 ? (
           <div className="space-y-4">
             {pendingFeedbacks.map((feedback) => (
-              <div key={String(feedback.id)} className="card">
+              <div key={String(feedback.id)} className="card p-4">
                 <div className="space-y-4">
                   <div>
                     <p className="text-white-700">{feedback.content}</p>
@@ -328,7 +330,7 @@ export default function AdminPage() {
         {activeTab === 'approved' && approvedFeedbacks.length > 0 ? (
           <div className="space-y-4">
             {approvedFeedbacks.map((feedback) => (
-              <div key={String(feedback.id)} className="card">
+              <div key={String(feedback.id)} className="card p-4 border-none">
                 <div className="space-y-4">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">

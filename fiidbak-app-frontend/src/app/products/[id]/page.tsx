@@ -9,6 +9,8 @@ import toast from "react-hot-toast"
 import { ProductInfo } from "@/components/product/ProductInfo"
 import { FeedbackSection } from "@/components/product/FeedbackSection"
 import { ProductSidebar } from "@/components/product/ProductSidebar"
+import { VerificationModal } from "@/components/VerificationModal"
+import { useVerification } from "@/hooks/useVerification"
 
 // --- Feedback contract hooks ---
 import {
@@ -71,7 +73,7 @@ export default function ProductDetailPage() {
     isLoading: isFeedbacksLoading,
     refetch: refetchFeedbacks,
     feedbackCount
-  } = useProductFeedbacks(productIdNum)
+  } = useProductFeedbacks(productIdNum, address as `0x${string}`)
 
   console.log(normalizedFeedbacks)
   // Submit feedback hook
@@ -110,11 +112,21 @@ export default function ProductDetailPage() {
     await voteOnFeedback(feedbackId, isPositive)
   }
 
+  const { isVerified } = useVerification()
+  const [showVerificationModal, setShowVerificationModal] = useState(false)
+
   const handleSubmitFeedback = useCallback(async (content: string) => {
     if (!content.trim() || !selectedProduct) return
 
     if (!address) {
       toast.error("Please connect your wallet to submit feedback")
+      return
+    }
+
+    // Check if user is verified
+    if (!isVerified) {
+      setShowVerificationModal(true)
+      toast.error("Please verify your wallet to submit feedback")
       return
     }
 
@@ -125,7 +137,7 @@ export default function ProductDetailPage() {
       console.error("Error submitting feedback:", error)
       toast.error("Failed to submit feedback")
     }
-  }, [giveFeedback, selectedProduct, address])
+  }, [giveFeedback, selectedProduct, address, isVerified])
 
   if (isFetchingProduct || !selectedProduct) {
     return (
@@ -167,6 +179,12 @@ export default function ProductDetailPage() {
           approvedFeedbacks={approvedCount}
         />
       </div>
+
+      {/* Verification Modal */}
+      <VerificationModal
+        isOpen={showVerificationModal}
+        onClose={() => setShowVerificationModal(false)}
+      />
     </div>
   )
 }

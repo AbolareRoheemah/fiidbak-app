@@ -46,7 +46,7 @@ export function FeedbackSection({
   }
 
   return (
-    <div className="card">
+    <div className="card p-4">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-white-900 flex items-center space-x-2">
           <MessageSquare size={24} />

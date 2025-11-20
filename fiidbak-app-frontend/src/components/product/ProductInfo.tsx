@@ -29,7 +29,7 @@ export function ProductInfo({ product, feedbackCount }: ProductInfoProps) {
         <img src={product.imageUrl} alt={product.name} className="w-full h-100 object-cover" />
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-6 p-4">
         <div>
           <h1 className="text-3xl font-bold text-white-900 mb-2">{product.name}</h1>
           <div className="flex items-center space-x-4 text-sm text-gray-500 mb-4">

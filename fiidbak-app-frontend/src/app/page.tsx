@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowRight, Shield, Users, Zap, TrendingUp, Star, Sparkles } from "lucide-react"
+import { ArrowRight, Shield, Users, Zap } from "lucide-react"
 import { ProductCard } from "../components/ui/ProductCard"
 import { LoadingSpinner } from "../components/ui/LoadingSpinner"
 import Link from "next/link"
@@ -31,19 +31,19 @@ interface Product {
 const features = [
   {
     icon: Shield,
-    title: "Verified Reviews",
+    title: "Blockchain Verified",
     description:
-      "All feedback is verified through blockchain technology ensuring authenticity and preventing fake reviews.",
+      "Every review is recorded on-chain. Once submitted, feedback can't be deleted or manipulated by anyone.",
   },
   {
     icon: Users,
-    title: "Community Driven",
-    description: "Community voting system with weighted votes based on user reputation and badge tiers.",
+    title: "Earn Reputation",
+    description: "Quality reviewers earn badges and reputation. Your voice matters more when you contribute thoughtfully.",
   },
   {
     icon: Zap,
-    title: "Instant Rewards",
-    description: "Earn badges and reputation for quality feedback, creating a gamified experience.",
+    title: "NFT Proof",
+    description: "Get an NFT for each review you write. Own your contributions and build your reviewer portfolio.",
   },
 ]
 
@@ -112,9 +112,28 @@ export default function Home() {
       setIsLoadingProducts(true)
 
       const contractProducts = productsRaw as ContractProduct[]
+
+      // Filter out default/empty products (same as products page)
+      const validProducts = contractProducts.filter(
+        (p) =>
+          p &&
+          p.productId &&
+          Number(p.productId) !== 0 &&
+          p.ipfsCid &&
+          typeof p.ipfsCid === "string" &&
+          p.ipfsCid.length > 0 &&
+          p.exists === true
+      )
+
+      // If no valid products, return early
+      if (validProducts.length === 0) {
+        setFeaturedProducts([])
+        setIsLoadingProducts(false)
+        return
+      }
+
       const productsWithIPFS = await Promise.all(
-        contractProducts
-          .filter(p => p.exists)
+        validProducts
           .slice(0, 3) // Only get first 3 for featured section
           .map(async (p) => {
             let ipfsData: { name?: string; description?: string; image?: string } = {}
@@ -139,13 +158,17 @@ export default function Home() {
               owner: p.owner,
               feedbackCount: 0,
               createdAt: new Date(Number(p.createdAt) * 1000).toISOString().substring(0, 10),
-              ipfsCid: p.ipfsCid
+              ipfsCid: p.ipfsCid,
+              hasValidData: !!(ipfsData.name && ipfsData.name !== 'Unnamed Product')
             }
           })
       )
 
+      // Filter out products with no valid IPFS data
+      const productsWithValidData = productsWithIPFS.filter(p => p.hasValidData)
+
       if (!ignore) {
-        setFeaturedProducts(productsWithIPFS)
+        setFeaturedProducts(productsWithValidData)
         setIsLoadingProducts(false)
       }
     }
@@ -162,33 +185,22 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
-      <section className="relative py-24 overflow-hidden">
-        {/* Background Grid */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,oklch(0.2_0_0)_1px,transparent_1px),linear-gradient(to_bottom,oklch(0.2_0_0)_1px,transparent_1px)] bg-[size:4rem_4rem] opacity-20"></div>
-
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="relative py-32 overflow-hidden">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
-            <div className="inline-flex items-center space-x-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-2 mb-8">
-              <Sparkles size={16} className="text-primary" />
-              <span className="text-sm font-medium text-primary">{"Powered by Blockchain Technology"}</span>
-            </div>
-
-            <h1 className="text-5xl md:text-7xl font-bold mb-8 text-balance">
-              The complete
-              <span className="block text-gradient-primary">platform for</span>
-              <span className="block">authentic feedback</span>
+            <h1 className="text-6xl md:text-8xl font-bold mb-6 tracking-tight">
+              Product feedback,
+              <span className="block text-gradient-primary">verified on-chain</span>
             </h1>
 
-            <p className="text-xl md:text-2xl text-muted-foreground mb-12 max-w-3xl mx-auto text-pretty">
-              {
-                "Your team's toolkit to stop configuring and start innovating. Securely build, deploy, and scale the best feedback experiences with blockchain."
-              }
+            <p className="text-xl md:text-2xl text-muted-foreground mb-12 max-w-2xl mx-auto leading-relaxed">
+              Real reviews from real users. No bots, no fake ratings. Just honest feedback stored permanently on the blockchain.
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <SimpleButton href="/products" variant="primary">
                 <>
-                  Explore Products
+                  Browse Products
                   <ArrowRight size={20} className="ml-2" />
                 </>
               </SimpleButton>
@@ -196,7 +208,7 @@ export default function Home() {
                 href="/create-product"
                 variant="outline"
               >
-                Create Product
+                List Your Product
               </SimpleButton>
             </div>
           </div>
@@ -227,67 +239,47 @@ export default function Home() {
       </section> */}
 
       {/* Features Section */}
-      <section className="py-24">
+      <section className="py-24 bg-secondary/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-            <div>
-              <div className="inline-flex items-center space-x-2 text-primary mb-6">
-                <Sparkles size={16} />
-                <span className="text-sm font-medium uppercase tracking-wider">Collaboration</span>
-              </div>
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold mb-4">
+              Why Fiidbak?
+            </h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Traditional review platforms can delete, hide, or manipulate feedback. We can't.
+            </p>
+          </div>
 
-              <h2 className="text-4xl md:text-5xl font-bold mb-6 text-balance">
-                Faster iteration.
-                <span className="block text-gradient-primary">More innovation.</span>
-              </h2>
-
-              <p className="text-lg text-muted-foreground mb-8 text-pretty">
-                The platform for rapid progress. Let your team focus on shipping features instead of managing
-                infrastructure with automated feedback collection, built-in verification, and integrated community
-                governance.
-              </p>
-            </div>
-
-            <div className="space-y-6">
-              {features.map((feature, index) => {
-                const Icon = feature.icon
-                return (
-                  <div
-                    key={index}
-                    className="glass-card p-6 rounded-xl group hover:glow-primary transition-all duration-300"
-                  >
-                    <div className="flex items-start space-x-4">
-                      <div className="w-12 h-12 gradient-primary rounded-lg flex items-center justify-center flex-shrink-0">
-                        <Icon size={24} className="text-primary-foreground" />
-                      </div>
-                      <div>
-                        <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
-                        <p className="text-muted-foreground text-pretty">{feature.description}</p>
-                      </div>
-                    </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {features.map((feature, index) => {
+              const Icon = feature.icon
+              return (
+                <div
+                  key={index}
+                  className="bg-card border border-border rounded-2xl p-8 hover:shadow-lg transition-shadow"
+                >
+                  <div className="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center mb-6">
+                    <Icon size={28} className="text-primary" />
                   </div>
-                )
-              })}
-            </div>
+                  <h3 className="text-2xl font-bold mb-3">{feature.title}</h3>
+                  <p className="text-muted-foreground leading-relaxed">{feature.description}</p>
+                </div>
+              )
+            })}
           </div>
         </div>
       </section>
 
       {/* Featured Products */}
-      <section className="py-24 border-t border-border">
+      <section className="py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <div className="inline-flex items-center space-x-2 text-primary mb-6">
-              <TrendingUp size={16} />
-              <span className="text-sm font-medium uppercase tracking-wider">Featured Products</span>
-            </div>
-
-            <h2 className="text-4xl md:text-5xl font-bold mb-6 text-balance">
-              Make teamwork seamless.
-              <span className="block text-muted-foreground text-2xl font-normal mt-2">
-                Tools for your team and stakeholders to share feedback and iterate faster.
-              </span>
+            <h2 className="text-4xl md:text-5xl font-bold mb-4">
+              Recently Added Products
             </h2>
+            <p className="text-lg text-muted-foreground">
+              See what the community is reviewing
+            </p>
           </div>
 
           {isLoading ? (
@@ -328,16 +320,16 @@ export default function Home() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-24 border-t border-border">
+      <section className="py-32 bg-secondary/30">
         <div className="max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8">
-          <h2 className="text-4xl md:text-5xl font-bold mb-6 text-balance">Ready to Join the Future of Feedback?</h2>
-          <p className="text-xl text-muted-foreground mb-12 text-pretty">
-            Connect your wallet and start earning badges for quality reviews today.
+          <h2 className="text-4xl md:text-6xl font-bold mb-6">Start reviewing or list your product</h2>
+          <p className="text-xl text-muted-foreground mb-12">
+            Connect your wallet to get started. It's free.
           </p>
-          <SimpleButton href="/products" variant="accent">
+          <SimpleButton href="/products" variant="primary">
             <>
-              <Star size={20} className="mr-2" />
               Get Started
+              <ArrowRight size={20} className="ml-2" />
             </>
           </SimpleButton>
         </div>

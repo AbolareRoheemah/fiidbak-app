@@ -1,12 +1,17 @@
 "use client"
 import { useState, useEffect, useMemo } from "react"
 import { useAccount } from "wagmi"
+import { readContract } from '@wagmi/core'
 import { Search, Filter, ThumbsUp, ThumbsDown, CheckCircle, Clock } from "lucide-react"
 import { FeedbackCard } from "@/components/ui/FeedbackCard"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner"
-import { useAllFeedbacksByRange, useVoteFeedback, useUserTier, useHasVoted } from "@/hooks/useContract"
+import { useAllFeedbacksByRange, useVoteFeedback, useUserTier } from "@/hooks/useContract"
 import { getUploadedFile } from "@/utils/pinata"
+import { config } from "@/app/wagmi"
+import { BADGE_NFT_ABI } from "@/lib/badge_nft_abi"
+import { FEEDBACK_MANAGER_ABI } from "@/lib/feedback_mg_abi"
+import { CONTRACT_ADDRESSES } from "@/lib/contracts"
 
 interface ContractFeedback {
   feedbackId: bigint | number
@@ -91,19 +96,55 @@ export default function FeedbackPage() {
             ipfsData = {}
           }
 
+          // Fetch author's badge tier
+          let authorTier = 0
+          try {
+            const tierData = await readContract(config, {
+              abi: BADGE_NFT_ABI,
+              address: CONTRACT_ADDRESSES.BADGE_NFT,
+              functionName: 'getUserTier',
+              args: [f.feedbackBy as `0x${string}`]
+            })
+            authorTier = Number(tierData || 0)
+          } catch (e) {
+            console.error('Error fetching author tier:', e)
+            authorTier = 0
+          }
+
+          // Check if user has voted on this feedback
+          let hasUserVoted = false
+          let userVote: boolean | null = null
+          if (address) {
+            try {
+              const voteData = await readContract(config, {
+                abi: FEEDBACK_MANAGER_ABI,
+                address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+                functionName: 'hasVoted',
+                args: [BigInt(f.feedbackId), address]
+              })
+              hasUserVoted = Boolean(voteData)
+
+              if (hasUserVoted) {
+                userVote = true // Default to true, ideally should fetch actual vote direction
+              }
+            } catch (e) {
+              console.error('Error checking user vote:', e)
+            }
+          }
+
           return {
             id: Number(f.feedbackId),
             content: ipfsData.content || f.feedbackHash,
             author: f.feedbackBy,
-            authorTier: 1, // Could fetch from badge contract if needed
+            authorTier,
             productId: Number(f.productId),
             positiveVotes: Number(f.positiveVotes),
             negativeVotes: Number(f.negativeVotes),
             totalVotes: Number(f.totalVotes),
             approved: f.approved,
             createdAt: f.timestamp ? new Date(Number(f.timestamp) * 1000).toISOString().substring(0, 10) : '',
-            hasUserVoted: false, // Will be updated per user
-            userVote: null,
+            hasUserVoted,
+            userVote,
             ipfsHash: f.feedbackHash
           }
         })
@@ -120,7 +161,7 @@ export default function FeedbackPage() {
     return () => {
       ignore = true
     }
-  }, [feedbacksData])
+  }, [feedbacksData, address])
 
   const isLoading = isContractLoading || isFetchingIPFS
 

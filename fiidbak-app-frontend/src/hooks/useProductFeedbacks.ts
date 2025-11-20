@@ -3,7 +3,19 @@ import { useProductFeedbackIds } from './useContract'
 import { readContract } from '@wagmi/core'
 import { config } from '@/app/wagmi'
 import { FEEDBACK_MANAGER_ABI } from '@/lib/feedback_mg_abi'
+import { BADGE_NFT_ABI } from '@/lib/badge_nft_abi'
 import { CONTRACT_ADDRESSES } from '@/lib/contracts'
+
+interface ContractFeedbackData {
+  feedbackBy: string
+  productId: bigint | number
+  positiveVotes: bigint | number
+  negativeVotes: bigint | number
+  totalVotes: bigint | number
+  approved: boolean
+  timestamp: bigint | number
+  feedbackHash: string
+}
 
 export interface ProductFeedback {
   id: number | bigint
@@ -20,7 +32,7 @@ export interface ProductFeedback {
   userVote: null | boolean
 }
 
-export function useProductFeedbacks(productId?: number) {
+export function useProductFeedbacks(productId?: number, userAddress?: `0x${string}`) {
   const [feedbacks, setFeedbacks] = useState<ProductFeedback[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -60,7 +72,7 @@ export function useProductFeedbacks(productId?: number) {
 
             if (!feedbackData) return null
 
-            const d = feedbackData as any
+            const d = feedbackData as ContractFeedbackData
 
             // Directly use the feedback content as submitted (no IPFS/hash logic)
             const actualContent =
@@ -68,19 +80,58 @@ export function useProductFeedbacks(productId?: number) {
                 ? d.feedbackHash
                 : ''
 
+            // Fetch author's badge tier
+            let authorTier = 0
+            try {
+              const tierData = await readContract(config, {
+                abi: BADGE_NFT_ABI,
+                address: CONTRACT_ADDRESSES.BADGE_NFT,
+                functionName: 'getUserTier',
+                args: [d.feedbackBy as `0x${string}`]
+              })
+              authorTier = Number(tierData || 0)
+            } catch (err) {
+              console.error('Error fetching author tier:', err)
+              authorTier = 0
+            }
+
+            // Check if user has voted on this feedback
+            let hasUserVoted = false
+            let userVote: boolean | null = null
+            if (userAddress) {
+              try {
+                const voteData = await readContract(config, {
+                  abi: FEEDBACK_MANAGER_ABI,
+                  address: CONTRACT_ADDRESSES.FEEDBACK_MANAGER,
+                  functionName: 'hasVoted',
+                  args: [BigInt(feedbackId), userAddress]
+                })
+                hasUserVoted = Boolean(voteData)
+
+                // If user has voted, we need to fetch which way they voted
+                // This would require additional contract method or storing vote direction
+                // For now, we just know they voted
+                if (hasUserVoted) {
+                  userVote = true // Default to true, ideally should fetch actual vote direction
+                }
+              } catch (err) {
+                console.error('Error checking user vote:', err)
+              }
+            }
+
             return {
               id: feedbackId,
               content: actualContent,
               author: d.feedbackBy || "",
-              authorTier: 1,
+              authorTier,
               productId: Number(d.productId || 0),
               positiveVotes: Number(d.positiveVotes || 0),
               negativeVotes: Number(d.negativeVotes || 0),
               totalVotes: Number(d.totalVotes || 0),
               approved: d.approved || false,
               createdAt: d.timestamp ? new Date(Number(d.timestamp) * 1000).toISOString().substring(0, 10) : undefined,
-              hasUserVoted: false,
-              userVote: null,
+              hasUserVoted,
+              userVote,
             } as ProductFeedback
           } catch (err) {
             console.error('Error fetching feedback', feedbackId, err)
@@ -109,7 +160,7 @@ export function useProductFeedbacks(productId?: number) {
     return () => {
       cancelled = true
     }
-  }, [feedbackIds, refreshKey])
+  }, [feedbackIds, refreshKey, userAddress])
 
   const refetch = async () => {
     await refetchIds()

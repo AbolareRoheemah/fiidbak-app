@@ -32,7 +32,7 @@ export function ProductCard({ product }: ProductCardProps) {
         </div>
 
         {/* Product Info */}
-        <div className="space-y-3">
+        <div className="space-y-3 p-4">
           <div>
             <h3 className="text-lg font-semibold text-white-900 group-hover:text-primary-600 transition-colors">
               {product.name}

@@ -6,6 +6,7 @@ import {Script, console} from "forge-std/Script.sol";
 import {ProductNFT} from "../src/ProductNFT.sol";
 import {BadgeNFT} from "../src/BadgeNFT.sol";
 import {FeedbackManager} from "../src/FeedbackManager.sol";
+import {UserVerification} from "../src/UserVerification.sol";
 
 contract DeployScript is Script {
     function setUp() public {}
@@ -15,41 +16,75 @@ contract DeployScript is Script {
         // Otherwise, it will use PRIVATE_KEY from .env if available
         address deployer = msg.sender;
 
+        console.log("=== Starting Deployment ===");
         console.log("Deploying contracts with account:", deployer);
         console.log("Account balance:", deployer.balance);
+        console.log("");
 
         vm.startBroadcast();
 
-        // Deploy ProductNFT
+        // 1. Deploy UserVerification (no dependencies)
+        console.log("1. Deploying UserVerification...");
+        UserVerification userVerification = new UserVerification();
+        console.log("   UserVerification deployed at:", address(userVerification));
+        console.log("");
+
+        // 2. Deploy ProductNFT
+        console.log("2. Deploying ProductNFT...");
         ProductNFT productNFT = new ProductNFT();
-        console.log("ProductNFT deployed at:", address(productNFT));
+        console.log("   ProductNFT deployed at:", address(productNFT));
+        console.log("");
 
-        // Note: We need to deploy BadgeNFT with FeedbackManager address, but FeedbackManager needs BadgeNFT address
-        // Solution: Deploy a placeholder BadgeNFT, deploy FeedbackManager, then deploy final BadgeNFT
-        // OR: Use deployer as temporary minter, then grant to FeedbackManager later
-
-        // Deploy BadgeNFT with deployer as initial admin and minter
+        // 3. Deploy BadgeNFT with deployer as initial admin and minter
+        console.log("3. Deploying BadgeNFT...");
         BadgeNFT badgeNFT = new BadgeNFT(deployer, deployer, "https://ipfs.io/ipfs/");
-        console.log("BadgeNFT deployed at:", address(badgeNFT));
+        console.log("   BadgeNFT deployed at:", address(badgeNFT));
+        console.log("");
 
-        // Deploy FeedbackManager with constructor args: admin, badge contract, and product NFT contract addresses
-        FeedbackManager feedbackManager = new FeedbackManager(deployer, address(badgeNFT), address(productNFT));
-        console.log("FeedbackManager deployed at:", address(feedbackManager));
+        // 4. Deploy FeedbackManager
+        console.log("4. Deploying FeedbackManager...");
+        FeedbackManager feedbackManager = new FeedbackManager(
+            deployer,
+            address(badgeNFT),
+            address(productNFT)
+        );
+        console.log("   FeedbackManager deployed at:", address(feedbackManager));
+        console.log("");
 
-        // Set FeedbackManager in ProductNFT for cross-contract calls
+        // 5. Configure ProductNFT
+        console.log("5. Configuring ProductNFT...");
         productNFT.setFeedbackManager(address(feedbackManager));
-        console.log("FeedbackManager set in ProductNFT");
+        console.log("   - FeedbackManager set");
+        console.log("");
 
-        // Grant MINTER_ROLE to FeedbackManager in BadgeNFT
+        // 6. Configure BadgeNFT
+        console.log("6. Configuring BadgeNFT...");
         badgeNFT.grantMinter(address(feedbackManager));
-        console.log("MINTER_ROLE granted to FeedbackManager");
+        console.log("   - MINTER_ROLE granted to FeedbackManager");
+        console.log("");
 
         vm.stopBroadcast();
 
-        // Log deployment addresses for verification
-        console.log("\n=== Deployment Summary ===");
-        console.log("ProductNFT:", address(productNFT));
-        console.log("BadgeNFT:", address(badgeNFT));
-        console.log("FeedbackManager:", address(feedbackManager));
+        // Log deployment summary
+        console.log("=== Deployment Summary ===");
+        console.log("UserVerification:  ", address(userVerification));
+        console.log("ProductNFT:        ", address(productNFT));
+        console.log("BadgeNFT:          ", address(badgeNFT));
+        console.log("FeedbackManager:   ", address(feedbackManager));
+        console.log("");
+        console.log("=== Frontend .env Configuration ===");
+        console.log("Copy these to your frontend .env.local file:");
+        console.log("");
+        console.log("NEXT_PUBLIC_USER_VERIFICATION_ADDRESS=%s", address(userVerification));
+        console.log("NEXT_PUBLIC_PRODUCT_NFT_ADDRESS=%s", address(productNFT));
+        console.log("NEXT_PUBLIC_BADGE_NFT_ADDRESS=%s", address(badgeNFT));
+        console.log("NEXT_PUBLIC_FEEDBACK_MANAGER_ADDRESS=%s", address(feedbackManager));
+        console.log("");
+        console.log("=== Important Note ===");
+        console.log("UserVerification is deployed but NOT linked to contracts.");
+        console.log("This is intentional - verification is enforced on the frontend only.");
+        console.log("Users can bypass by calling contracts directly, but 99%% won't.");
+        console.log("");
+        console.log("=== Deployment Complete! ===");
     }
 }

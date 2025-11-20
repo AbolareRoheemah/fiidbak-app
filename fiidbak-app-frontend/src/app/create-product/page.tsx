@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import { uploadFileToPinata, uploadJsonToPinata } from '@/utils/pinata'
 import { useCreateProduct } from '@/hooks/useContract'
 import { useAccount } from 'wagmi'
+import { VerificationGuard } from '@/components/VerificationGuard'
 
 export default function CreateProductPage() {
   const router = useRouter()
@@ -147,7 +148,8 @@ export default function CreateProductPage() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
+      <VerificationGuard>
+        <form onSubmit={handleSubmit} className="space-y-8">
         {/* Basic Information */}
         <div className="card">
           <h2 className="text-xl font-semibold text-white-900 mb-6">Basic Information</h2>
@@ -336,6 +338,7 @@ export default function CreateProductPage() {
           </button>
         </div>
       </form>
+      </VerificationGuard>
     </div>
   )
 }
