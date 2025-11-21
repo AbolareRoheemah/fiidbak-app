@@ -28,7 +28,6 @@ export function useUserProducts() {
   const [products, setProducts] = useState<Product[]>([])
   const [isFetchingIPFS, setIsFetchingIPFS] = useState(false)
 
-  // Fetch products owned by this user (getting up to 50 products starting from index 0)
   const {
     data: productsData,
     isLoading: isContractLoading,
@@ -69,7 +68,7 @@ export function useUserProducts() {
 
             return {
               id: Number(p.productId),
-              name: ipfsData.name || 'Unnamed Product',
+              name: ipfsData.name || '',
               description: ipfsData.description || '',
               imageUrl: ipfsData.image || '',
               owner: p.owner,
@@ -80,8 +79,13 @@ export function useUserProducts() {
           })
       )
 
+      // Remove products with no name, description, and image (all blank)
+      const cleanedProducts = productsWithIPFS.filter(
+        p => !!p.name || !!p.description || !!p.imageUrl
+      )
+
       if (!ignore) {
-        setProducts(productsWithIPFS)
+        setProducts(cleanedProducts)
         setIsFetchingIPFS(false)
       }
     }

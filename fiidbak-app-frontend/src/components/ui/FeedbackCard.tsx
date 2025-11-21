@@ -47,7 +47,7 @@ export function FeedbackCard({ feedback, onVote, canVote }: FeedbackCardProps) {
   }
 
   return (
-    <div className="card">
+    <div className="card mb-4">
       <div className="space-y-4 p-4">
         {/* Header */}
         <div className="flex items-start justify-between">

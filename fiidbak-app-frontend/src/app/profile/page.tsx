@@ -71,7 +71,7 @@ export default function ProfilePage() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Profile Header */}
-      <div className="card mb-8">
+      <div className="card mb-8 p-4">
         <div className="flex items-start space-x-6">
           <div className="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center">
             <User size={32} className="text-primary-600" />
@@ -88,16 +88,16 @@ export default function ProfilePage() {
               <span>{userStats?.totalVotes || 0} votes received</span>
             </div>
           </div>
-          <button className="btn-outline flex items-center space-x-2">
+          {/* <button className="btn-outline flex items-center space-x-2">
             <Settings size={16} />
             <span>Settings</span>
-          </button>
+          </button> */}
         </div>
       </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="card text-center">
+        <div className="card text-center p-4">
           <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-3">
             <Trophy size={24} className="text-primary-600" />
           </div>
@@ -105,7 +105,7 @@ export default function ProfilePage() {
           <div className="text-sm text-white-600">Reputation Points</div>
         </div>
 
-        <div className="card text-center">
+        <div className="card text-center p-4">
           <div className="w-12 h-12 bg-success-100 rounded-full flex items-center justify-center mx-auto mb-3">
             <MessageSquare size={24} className="text-success-600" />
           </div>
@@ -113,7 +113,7 @@ export default function ProfilePage() {
           <div className="text-sm text-white-600">Approved Reviews</div>
         </div>
 
-        <div className="card text-center">
+        <div className="card text-center p-4">
           <div className="w-12 h-12 bg-accent-100 rounded-full flex items-center justify-center mx-auto mb-3">
             <Package size={24} className="text-accent-600" />
           </div>
@@ -121,7 +121,7 @@ export default function ProfilePage() {
           <div className="text-sm text-white-600">Products Created</div>
         </div>
 
-        <div className="card text-center">
+        <div className="card text-center p-4">
           <div className="w-12 h-12 bg-warning-100 rounded-full flex items-center justify-center mx-auto mb-3">
             <TrendingUp size={24} className="text-warning-600" />
           </div>
@@ -132,7 +132,7 @@ export default function ProfilePage() {
 
       {/* Badge Progress */}
       {userStats && userStats.badgeTier < 5 && nextTier.needed > 0 && (
-        <div className="card mb-8">
+        <div className="card mb-8 p-4">
           <h3 className="text-lg font-semibold text-white-900 mb-4">Badge Progress</h3>
           <div className="space-y-4">
             <div>

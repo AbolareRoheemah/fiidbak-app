@@ -21,7 +21,7 @@ export function ProductCard({ product }: ProductCardProps) {
 
   return (
     <Link href={`/products/${product.id}`} className="group">
-      <div className="card hover:shadow-lg transition-all duration-300 group-hover:scale-105">
+      <div className="card hover:shadow-lg transition-all duration-300 group-hover:scale-105 mb-4">
         {/* Product Image */}
         <div className="aspect-w-16 aspect-h-9 mb-4 rounded-lg overflow-hidden bg-gray-100">
           <img
