@@ -16,32 +16,43 @@ export function ProductSidebar({
   approvedFeedbacks,
 }: ProductSidebarProps) {
   const handleShare = useCallback(() => {
-    if (navigator.share) {
+    if (typeof window === "undefined") return;
+    const shareUrl = window.location.href;
+
+    // Use refined type guards to avoid "any"
+    if (
+      typeof navigator.share === "function"
+    ) {
       navigator
         .share({
           title: "Check out this product on Fiidbak!",
-          url: typeof window !== "undefined" ? window.location.href : "",
+          url: shareUrl,
         })
         .catch(() => {
           // User cancelled or error. Do nothing.
-        })
-    } else if (typeof window !== "undefined" && window.location.href) {
-      // Fallback: copy to clipboard
+        });
+    } else if (
+      typeof navigator.clipboard !== "undefined" &&
+      typeof navigator.clipboard.writeText === "function"
+    ) {
       navigator.clipboard
-        .writeText(window.location.href)
+        .writeText(shareUrl)
         .then(() => {
-          alert("Product URL copied to clipboard!")
+          window.alert("Product URL copied to clipboard!");
         })
         .catch(() => {
-          alert("Failed to copy URL.")
-        })
+          window.alert("Failed to copy URL.");
+        });
+    } else {
+      // Legacy fallback
+      window.prompt("Copy this URL:", shareUrl);
     }
-  }, [])
+  }, []);
 
   return (
     <div className="space-y-6">
       {/* Stats Card */}
-      <div className="card">
+      <div className="card p-4">
         <h3 className="text-lg font-semibold text-white-900 mb-4">Statistics</h3>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
@@ -60,7 +71,7 @@ export function ProductSidebar({
       </div>
 
       {/* Quick Actions */}
-      <div className="card">
+      <div className="card p-4">
         <h3 className="text-lg font-semibold text-white-900 mb-4">Quick Actions</h3>
         <div className="space-y-3">
           <button
