@@ -85,18 +85,6 @@ Badges are **soulbound (non-transferable)** — your reputation is truly yours.
 
 ---
 
-## Project Structure
-├── fiidbak-app-contracts/
-│   ├── src/
-│   │   ├── ProductNFT.sol
-│   │   ├── BadgeNFT.sol
-│   │   └── FeedbackManager.sol
-│   └── script/Deploy.s.sol
-├── fiidbak-app-frontend/          → Next.js app
-└── README.md
-
----
-
 ## Quick Start (Developers)
 
 ```bash
