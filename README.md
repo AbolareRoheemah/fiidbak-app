@@ -10,7 +10,7 @@ Your feedback lives forever on-chain. Your reputation grows with it.
 **https://fiidbak-app.vercel.app/**
 
 ### Demo Video
-[(https://www.loom.com/share/5d2107bdb1034ff88df49016f49df9cd)](https://www.loom.com/share/5d2107bdb1034ff88df49016f49df9cd)  
+[![Fiidbak Demo Video](https://www.loom.com/share/5d2107bdb1034ff88df49016f49df9cd)](https://www.loom.com/share/5d2107bdb1034ff88df49016f49df9cd)  
 
 ---
 
