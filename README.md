@@ -84,3 +84,28 @@ Badges are **soulbound (non-transferable)** — your reputation is truly yours.
 | FeedbackManager | `0x329f4881a28D2053d28b6A82A93E7c44b6a7167D` | Yes   |
 
 ---
+
+## Project Structure
+├── fiidbak-app-contracts/
+│   ├── src/
+│   │   ├── ProductNFT.sol
+│   │   ├── BadgeNFT.sol
+│   │   └── FeedbackManager.sol
+│   └── script/Deploy.s.sol
+├── fiidbak-app-frontend/          → Next.js app
+└── README.md
+
+---
+
+## Quick Start (Developers)
+
+```bash
+# Clone repo
+git clone https://github.com/yourusername/fiidbak.git
+cd fiidbak-app-frontend
+
+# Install dependencies
+npm install
+
+# Run
+npm run dev
